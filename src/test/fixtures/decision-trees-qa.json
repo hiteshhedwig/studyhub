@@ -1,0 +1,20 @@
+{
+  "category": "Machine Learning",
+  "topic": "Decision Trees",
+  "title": "Decision Trees Active Recall Set",
+  "source": "ChatGPT",
+  "questions": [
+    {
+      "question": "What is information gain?",
+      "answer": "Information gain measures how much a split reduces uncertainty in the target labels.",
+      "difficulty": "medium",
+      "tags": ["entropy", "splitting", "decision-trees"]
+    },
+    {
+      "question": "Why can decision trees overfit?",
+      "answer": "They can keep splitting until they model noise or one-off patterns instead of stable structure.",
+      "difficulty": "easy",
+      "tags": ["overfitting", "pruning"]
+    }
+  ]
+}

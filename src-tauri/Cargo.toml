@@ -1,0 +1,23 @@
+[package]
+name = "study-hub"
+version = "0.1.0"
+description = "A local-first personal study system."
+authors = ["Study Hub"]
+edition = "2021"
+
+[lib]
+name = "study_hub_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "1", features = [] }
+
+[dependencies]
+tauri = { version = "1", features = ["dialog-all", "fs-all", "notification-all", "shell-open", "window-all"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# Used by `tauri build` (production) so the app serves bundled assets via the
+# custom protocol instead of a dev server. Do not remove.
+custom-protocol = ["tauri/custom-protocol"]
