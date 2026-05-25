@@ -18,3 +18,6 @@ build/
 .DS_Store
 .vscode/
 .idea/
+
+# Local working log (not published)
+progress.md
