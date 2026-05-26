@@ -3,6 +3,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { useAppStore } from "../../store/appStore";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { closeMiniOverlay, openMiniOverlay } from "../../services/overlayWindowService";
+import { exportDatabaseToFile, importDatabaseFromFile } from "../../services/backupService";
 
 export function SettingsPage() {
   const { theme, setTheme, resetAll } = useAppStore();
@@ -10,6 +11,29 @@ export function SettingsPage() {
   const [confirm, setConfirm] = useState("");
   const [message, setMessage] = useState("");
   const [overlayMessage, setOverlayMessage] = useState("");
+  const [dataMessage, setDataMessage] = useState("");
+  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+
+  async function handleExport() {
+    setBusy("export");
+    setDataMessage("");
+    const result = await exportDatabaseToFile();
+    setDataMessage(result.ok ? "Backup saved." : result.reason ?? "Export failed.");
+    setBusy(null);
+  }
+
+  async function handleImport() {
+    setBusy("import");
+    setDataMessage("");
+    const result = await importDatabaseFromFile();
+    setBusy(null);
+    if (result.ok) {
+      setDataMessage("Backup restored. Reloading…");
+      setTimeout(() => window.location.reload(), 600);
+    } else {
+      setDataMessage(result.reason ?? "Import failed.");
+    }
+  }
 
   async function reset() {
     if (confirm !== "RESET") {
@@ -56,8 +80,9 @@ export function SettingsPage() {
         </div>
         <div className="card grid">
           <h2>Data</h2>
-          <p className="muted">Your SQLite database is stored as a local IndexedDB binary. Export, import, and backup controls can be wired to a chosen file path from this same local database layer.</p>
-          <div className="button-row"><button className="btn" disabled>Export data</button><button className="btn" disabled>Import data</button><button className="btn" disabled>Database backup</button></div>
+          <p className="muted">Your SQLite database lives in the system WebView's IndexedDB. Export a <code>.sqlite</code> backup to keep a copy or move data to another machine; importing replaces the current database.</p>
+          <div className="button-row"><button className="btn" onClick={handleExport} disabled={busy !== null}>{busy === "export" ? "Exporting…" : "Export data"}</button><button className="btn" onClick={handleImport} disabled={busy !== null}>{busy === "import" ? "Importing…" : "Import data"}</button></div>
+          {dataMessage ? <p className="muted">{dataMessage}</p> : null}
           <label className="field"><span>Reset confirmation</span><input className="input" value={confirm} onChange={(event) => setConfirm(event.target.value)} placeholder="Type RESET" /></label>
           <button className="btn danger" onClick={reset}>Reset local data</button>
           {message ? <p className="muted">{message}</p> : null}

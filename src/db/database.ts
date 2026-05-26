@@ -69,6 +69,20 @@ export async function resetDatabase(): Promise<void> {
   await persistDatabase(db);
 }
 
+export async function exportDatabaseBinary(): Promise<Uint8Array> {
+  const db = await getDatabase();
+  return db.export();
+}
+
+export async function replaceDatabase(binary: Uint8Array): Promise<void> {
+  const SQL = await sql();
+  // Throws if the file is not a valid SQLite database.
+  const db = new SQL.Database(binary);
+  runMigrations(db);
+  dbPromise = Promise.resolve(db);
+  await persistDatabase(db);
+}
+
 export function toRows<T extends Record<string, unknown>>(db: Database, sqlText: string, params: SqlValue[] = []): T[] {
   const stmt = db.prepare(sqlText, params);
   const rows: T[] = [];
