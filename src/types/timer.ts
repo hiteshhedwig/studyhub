@@ -23,6 +23,7 @@ export type SessionTimerSnapshot = {
   phaseStartedAt: number | null;
   pausedAt: number | null;
   awaitingFinalChoice: boolean;
+  awaitingNextPhase: "break" | "focus" | "long_break" | "completed" | null;
   completedFocusCycles: number;
 };
 

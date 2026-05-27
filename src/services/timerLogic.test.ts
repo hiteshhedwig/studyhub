@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   completeCurrentPhase,
+  confirmNextPhase,
   continueAnotherCycle,
   createSessionTimer,
   formatSessionPlanSummary,
@@ -44,21 +45,31 @@ describe("timer logic", () => {
     expect(remainingFromTimestamp(resumed, 151_000)).toBe(1710);
   });
 
-  it("moves from focus to break between planned cycles", () => {
+  it("queues the break after focus and starts it on confirmation", () => {
     const snapshot = createSessionTimer(baseInput);
-    const next = completeCurrentPhase(snapshot, 1_801_000);
-    expect(next.phase).toBe("break");
-    expect(next.remainingSeconds).toBe(600);
-    expect(next.currentCycle).toBe(1);
-    expect(next.completedFocusCycles).toBe(1);
+    const ended = completeCurrentPhase(snapshot, 1_801_000);
+    expect(ended.phase).toBe("focus");
+    expect(ended.isRunning).toBe(false);
+    expect(ended.awaitingNextPhase).toBe("break");
+    expect(ended.completedFocusCycles).toBe(1);
+
+    const started = confirmNextPhase(ended, 1_810_000);
+    expect(started.phase).toBe("break");
+    expect(started.remainingSeconds).toBe(600);
+    expect(started.currentCycle).toBe(1);
+    expect(started.isRunning).toBe(true);
+    expect(started.awaitingNextPhase).toBeNull();
   });
 
   it("asks after the final planned cycle, then can continue or take long break", () => {
-    const cycleOne = completeCurrentPhase(createSessionTimer(baseInput), 1_801_000);
-    const cycleTwo = completeCurrentPhase(completeCurrentPhase(cycleOne, 2_401_000), 4_201_000);
-    expect(cycleTwo.awaitingFinalChoice).toBe(true);
-    expect(cycleTwo.phase).toBe("paused");
-    expect(continueAnotherCycle(cycleTwo, 4_202_000).currentCycle).toBe(3);
-    expect(takeLongBreak(cycleTwo, 4_202_000).phase).toBe("long_break");
+    const focusOneEnd = completeCurrentPhase(createSessionTimer(baseInput), 1_801_000);
+    const breakOne = confirmNextPhase(focusOneEnd, 1_802_000);
+    const breakOneEnd = completeCurrentPhase(breakOne, 2_402_000);
+    const focusTwo = confirmNextPhase(breakOneEnd, 2_403_000);
+    const focusTwoEnd = completeCurrentPhase(focusTwo, 4_203_000);
+    expect(focusTwoEnd.awaitingFinalChoice).toBe(true);
+    expect(focusTwoEnd.phase).toBe("paused");
+    expect(continueAnotherCycle(focusTwoEnd, 4_204_000).currentCycle).toBe(3);
+    expect(takeLongBreak(focusTwoEnd, 4_204_000).phase).toBe("long_break");
   });
 });

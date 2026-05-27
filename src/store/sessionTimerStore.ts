@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   completeCurrentPhase,
   completeSessionSnapshot,
+  confirmNextPhase,
   continueAnotherCycle,
   createSessionTimer,
   initialTimerSnapshot,
@@ -42,6 +43,7 @@ type TimerState = SessionTimerSnapshot &
     skipPhase: () => void;
     refreshDisplay: () => void;
     endTimer: () => void;
+    confirmNextPhase: () => void;
     continueAnotherCycle: () => void;
     takeLongBreak: () => void;
     setOverlayOpen: (isOpen: boolean) => void;
@@ -99,6 +101,7 @@ function snapshotFromState(state: TimerState): SessionTimerSnapshot {
     phaseStartedAt,
     pausedAt,
     awaitingFinalChoice,
+    awaitingNextPhase,
     completedFocusCycles
   } = state;
   return {
@@ -122,6 +125,7 @@ function snapshotFromState(state: TimerState): SessionTimerSnapshot {
     phaseStartedAt,
     pausedAt,
     awaitingFinalChoice,
+    awaitingNextPhase,
     completedFocusCycles
   };
 }
@@ -174,10 +178,17 @@ export const useSessionTimerStore = create<TimerState>((set, get) => ({
   },
   skipPhase: () => {
     const snapshot = snapshotFromState(get());
+    // If already at end-of-phase confirmation, "Skip" just advances.
+    if (snapshot.awaitingNextPhase) {
+      setAndPersist(set, get, confirmNextPhase(snapshot));
+      return;
+    }
     const activeSnapshot = snapshot.phase === "paused" && snapshot.previousPhase ? { ...snapshot, phase: snapshot.previousPhase, isRunning: true } : snapshot;
-    setAndPersist(set, get, completeCurrentPhase(activeSnapshot));
+    // Skip jumps straight to the next phase (no waiting on confirmation).
+    setAndPersist(set, get, confirmNextPhase(completeCurrentPhase(activeSnapshot)));
   },
   endTimer: () => setAndPersist(set, get, completeSessionSnapshot(snapshotFromState(get()))),
+  confirmNextPhase: () => setAndPersist(set, get, confirmNextPhase(snapshotFromState(get()))),
   continueAnotherCycle: () => setAndPersist(set, get, continueAnotherCycle(snapshotFromState(get()))),
   takeLongBreak: () => setAndPersist(set, get, takeLongBreak(snapshotFromState(get()))),
   setOverlayOpen: (isOpen) => {

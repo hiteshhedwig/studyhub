@@ -4,6 +4,7 @@ import { useAppStore } from "../../store/appStore";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { closeMiniOverlay, openMiniOverlay } from "../../services/overlayWindowService";
 import { exportDatabaseToFile, importDatabaseFromFile } from "../../services/backupService";
+import { SOUND_VOLUME_MAX, getVolume, previewBell, setVolume, unlockAudio } from "../../services/soundService";
 
 export function SettingsPage() {
   const { theme, setTheme, resetAll } = useAppStore();
@@ -13,6 +14,17 @@ export function SettingsPage() {
   const [overlayMessage, setOverlayMessage] = useState("");
   const [dataMessage, setDataMessage] = useState("");
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
+  const [volume, setVolumeState] = useState(() => getVolume());
+
+  function handleVolumeChange(next: number) {
+    setVolumeState(next);
+    setVolume(next);
+  }
+
+  function handleTestSound() {
+    unlockAudio();
+    previewBell(volume);
+  }
 
   async function handleExport() {
     setBusy("export");
@@ -67,6 +79,26 @@ export function SettingsPage() {
           <label className="field"><span>Appearance</span><select className="select" value={theme} onChange={(event) => setTheme(event.target.value as typeof theme)}><option value="warm-dark">Dark</option><option value="soft-light">Light</option><option value="system">System</option></select></label>
           <label className="field"><span>Default Pomodoro</span><select className="select" defaultValue="25/5"><option>25/5</option><option>30/10</option><option>50/10</option></select></label>
           <label className="field"><span>Default spaced repetition intervals</span><input className="input" readOnly value="1, 3, 7, 14, 30, 60 days" /></label>
+        </div>
+        <div className="card grid">
+          <h2>Sounds</h2>
+          <p className="muted">A soft tick plays in the last 5 seconds of each phase, and a fuller bell rings when a phase ends.</p>
+          <label className="field">
+            <span>Volume — {Math.round(volume * 100)}%</span>
+            <input
+              className="input"
+              type="range"
+              min={0}
+              max={SOUND_VOLUME_MAX}
+              step={0.05}
+              value={volume}
+              onChange={(event) => handleVolumeChange(Number(event.target.value))}
+            />
+          </label>
+          <div className="button-row">
+            <button className="btn" type="button" onClick={handleTestSound}>Test sound</button>
+            <button className="btn" type="button" onClick={() => handleVolumeChange(0)}>Mute</button>
+          </div>
         </div>
         <div className="card grid">
           <h2>Mini Overlay</h2>

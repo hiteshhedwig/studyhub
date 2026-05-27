@@ -3,6 +3,8 @@ import { appWindow, WebviewWindow } from "@tauri-apps/api/window";
 import { rememberMiniOverlayPosition, resizeMiniOverlay } from "../../services/overlayWindowService";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { progressPercent } from "../../services/timerLogic";
+import { unlockAudio } from "../../services/soundService";
+import { useTimerSounds } from "../../hooks/useTimerSounds";
 import { MiniOverlayControls } from "./MiniOverlayControls";
 import "./miniOverlay.css";
 
@@ -12,10 +14,20 @@ function formatTime(seconds: number) {
   return `${minutes}:${rest}`;
 }
 
-function phaseLabel(phase: string, awaitingFinalChoice: boolean) {
+function phaseLabel(phase: string, awaitingFinalChoice: boolean, awaitingNextPhase: string | null) {
   if (awaitingFinalChoice) return "Cycle complete";
+  if (awaitingNextPhase === "break" || awaitingNextPhase === "long_break") return "Focus done";
+  if (awaitingNextPhase === "focus") return "Break done";
+  if (awaitingNextPhase === "completed") return "Session done";
   if (phase === "long_break") return "Long Break";
   return phase.replace("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function nextActionLabel(next: string) {
+  if (next === "break") return "Start break";
+  if (next === "long_break") return "Start long break";
+  if (next === "focus") return "Start next cycle";
+  return "Finish";
 }
 
 export function MiniOverlay() {
@@ -26,6 +38,17 @@ export function MiniOverlay() {
     const id = window.setInterval(() => timer.refreshDisplay(), 500);
     return () => window.clearInterval(id);
   }, [timer]);
+
+  useTimerSounds(timer);
+
+  useEffect(() => {
+    const handler = () => {
+      unlockAudio();
+      window.removeEventListener("pointerdown", handler);
+    };
+    window.addEventListener("pointerdown", handler, { once: true });
+    return () => window.removeEventListener("pointerdown", handler);
+  }, []);
 
   useEffect(() => {
     const unlisten = appWindow.onMoved(() => {
@@ -98,7 +121,7 @@ export function MiniOverlay() {
       <div className="mini-overlay collapsed">
         <button className="overlay-collapsed-content" type="button" onClick={toggleCollapsed}>
           <span className={`phase-dot ${timer.phase}`} aria-hidden="true" />
-          <span>{phaseLabel(timer.phase, timer.awaitingFinalChoice)}</span>
+          <span>{phaseLabel(timer.phase, timer.awaitingFinalChoice, timer.awaitingNextPhase)}</span>
           <strong>{formatTime(timer.remainingSeconds)}</strong>
           <span>{timer.totalCycles ? `${timer.currentCycle}/${timer.totalCycles}` : `${timer.currentCycle}`}</span>
         </button>
@@ -134,7 +157,7 @@ export function MiniOverlay() {
           <div className="overlay-main">
             <div className="overlay-phase-row">
               <span className={`phase-dot ${timer.phase}`} aria-hidden="true" />
-              <span className="overlay-phase">{phaseLabel(timer.phase, timer.awaitingFinalChoice)}</span>
+              <span className="overlay-phase">{phaseLabel(timer.phase, timer.awaitingFinalChoice, timer.awaitingNextPhase)}</span>
               <span className="overlay-cycle-mini">{timer.totalCycles ? `${timer.currentCycle}/${timer.totalCycles}` : `Cycle ${timer.currentCycle}`}</span>
             </div>
             <strong className="overlay-time">{formatTime(timer.remainingSeconds)}</strong>
@@ -146,6 +169,11 @@ export function MiniOverlay() {
             <div className="overlay-final-actions">
               <button type="button" onClick={timer.continueAnotherCycle}>Continue</button>
               <button type="button" onClick={timer.takeLongBreak}>Long break</button>
+              <button type="button" onClick={timer.endTimer}>Wrap up</button>
+            </div>
+          ) : timer.awaitingNextPhase ? (
+            <div className="overlay-final-actions">
+              <button type="button" onClick={timer.confirmNextPhase}>{nextActionLabel(timer.awaitingNextPhase)}</button>
               <button type="button" onClick={timer.endTimer}>Wrap up</button>
             </div>
           ) : (

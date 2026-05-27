@@ -10,6 +10,8 @@ import { inferFileType, pickLocalFile, readTextFile } from "../../services/fileS
 import { parseQuestionImport } from "../../services/importQuestions";
 import { formatSessionPlanSummary } from "../../services/timerLogic";
 import { openMiniOverlay } from "../../services/overlayWindowService";
+import { unlockAudio } from "../../services/soundService";
+import { useTimerSounds } from "../../hooks/useTimerSounds";
 import type { AfterFinalCycleBehavior, SessionMode } from "../../types/timer";
 
 const presets = [
@@ -17,6 +19,36 @@ const presets = [
   { label: "30 / 10", focus: 30, break: 10 },
   { label: "50 / 10", focus: 50, break: 10 }
 ];
+
+function statusLabel(timer: { phase: string; awaitingFinalChoice: boolean; awaitingNextPhase: string | null }) {
+  if (timer.awaitingFinalChoice) return "Cycle complete";
+  if (timer.awaitingNextPhase === "break") return "Focus done";
+  if (timer.awaitingNextPhase === "long_break") return "Focus done";
+  if (timer.awaitingNextPhase === "focus") return "Break done";
+  if (timer.awaitingNextPhase === "completed") return "Session done";
+  if (timer.phase === "long_break") return "Long Break";
+  return timer.phase[0].toUpperCase() + timer.phase.slice(1);
+}
+
+function nextPhaseHeading(next: "break" | "focus" | "long_break" | "completed", endedPhase: string) {
+  if (next === "break") return "Focus done — ready for a break?";
+  if (next === "long_break") return "Focus done — ready for a long break?";
+  if (next === "focus") return endedPhase === "long_break" ? "Long break done — ready to focus?" : "Break done — ready to focus?";
+  return "Session complete";
+}
+
+function nextPhaseHint(next: "break" | "focus" | "long_break" | "completed") {
+  if (next === "break" || next === "long_break") return "Take a breath. The break starts when you say so.";
+  if (next === "focus") return "The next focus cycle starts when you say so.";
+  return "Wrap up the session to save your reflection.";
+}
+
+function nextPhaseActionLabel(next: "break" | "focus" | "long_break" | "completed") {
+  if (next === "break") return "Start break";
+  if (next === "long_break") return "Start long break";
+  if (next === "focus") return "Start next cycle";
+  return "Finish session";
+}
 
 export function TodayPage() {
   const store = useAppStore();
@@ -51,6 +83,17 @@ export function TodayPage() {
     const id = window.setInterval(() => timer.refreshDisplay(), 500);
     return () => window.clearInterval(id);
   }, [timer]);
+
+  useTimerSounds(timer);
+
+  useEffect(() => {
+    const handler = () => {
+      unlockAudio();
+      window.removeEventListener("pointerdown", handler);
+    };
+    window.addEventListener("pointerdown", handler, { once: true });
+    return () => window.removeEventListener("pointerdown", handler);
+  }, []);
 
   useEffect(() => {
     setRecordedCycles(timer.completedFocusCycles);
@@ -161,14 +204,14 @@ export function TodayPage() {
                 <span className="pill">{timer.totalCycles ? `Cycle ${timer.currentCycle} / ${timer.totalCycles}` : `Cycle ${timer.currentCycle}`}</span>
               </div>
               <div className="button-row">
-                <span className="pill">{timer.phase === "long_break" ? "Long Break" : timer.awaitingFinalChoice ? "Cycle complete" : timer.phase[0].toUpperCase() + timer.phase.slice(1)}</span>
+                <span className="pill">{statusLabel(timer)}</span>
                 <button className="btn" onClick={handleOpenOverlay}><Layers2 size={17} />Open Mini Overlay</button>
               </div>
               {overlayError ? <p className="muted">{overlayError}</p> : null}
               <TimerRing
                 progress={progress}
                 time={`${minutes}:${seconds}`}
-                label={timer.phase === "long_break" ? "Long Break" : timer.awaitingFinalChoice ? "Cycle complete" : timer.phase[0].toUpperCase() + timer.phase.slice(1)}
+                label={statusLabel(timer)}
                 state={!timer.isRunning ? "paused" : timer.phase === "break" || timer.phase === "long_break" ? "break" : "focus"}
               />
               {timer.awaitingFinalChoice ? (
@@ -176,6 +219,15 @@ export function TodayPage() {
                   <h3>Planned cycles complete</h3>
                   <p className="muted">Choose what feels right for this session.</p>
                   <div className="button-row"><button className="btn" onClick={timer.continueAnotherCycle}>Continue another cycle</button><button className="btn" onClick={timer.takeLongBreak}>Take long break</button><button className="btn primary" onClick={timer.endTimer}>End and wrap up</button></div>
+                </div>
+              ) : timer.awaitingNextPhase ? (
+                <div className="card">
+                  <h3>{nextPhaseHeading(timer.awaitingNextPhase, timer.phase)}</h3>
+                  <p className="muted">{nextPhaseHint(timer.awaitingNextPhase)}</p>
+                  <div className="button-row">
+                    <button className="btn primary" onClick={timer.confirmNextPhase}>{nextPhaseActionLabel(timer.awaitingNextPhase)}</button>
+                    <button className="btn" onClick={timer.endTimer}>Go to wrap-up</button>
+                  </div>
                 </div>
               ) : <div className="button-row"><button className="btn primary" onClick={timer.toggleRunning}>{timer.isRunning ? "Pause" : "Resume"}</button><button className="btn" onClick={timer.skipPhase}>Skip phase</button><button className="btn" onClick={timer.endTimer}>Go to wrap-up</button></div>}
               <label className="field">

@@ -37,6 +37,7 @@ export function initialTimerSnapshot(now = Date.now()): SessionTimerSnapshot {
     phaseStartedAt: null,
     pausedAt: null,
     awaitingFinalChoice: false,
+    awaitingNextPhase: null,
     completedFocusCycles: 0
   };
 }
@@ -115,33 +116,56 @@ function startPhase(snapshot: SessionTimerSnapshot, phase: TimerPhase, seconds: 
     isRunning: true,
     phaseStartedAt: now,
     pausedAt: null,
-    awaitingFinalChoice: false
+    awaitingFinalChoice: false,
+    awaitingNextPhase: null
   };
 }
 
-export function completeCurrentPhase(snapshot: SessionTimerSnapshot, now = Date.now()): SessionTimerSnapshot {
+// When a phase reaches zero we stop the timer and queue the *next* phase in
+// `awaitingNextPhase` rather than starting it. The UI then asks the user to
+// confirm. The "ask" final-cycle flow keeps its own dedicated buttons via
+// `awaitingFinalChoice`.
+export function completeCurrentPhase(snapshot: SessionTimerSnapshot, _now = Date.now()): SessionTimerSnapshot {
   if (!snapshot.activeSessionId) return snapshot;
+  const stopped = { ...snapshot, remainingSeconds: 0, phaseStartedAt: null, isRunning: false };
+
   if (snapshot.phase === "focus") {
     const completed = snapshot.completedFocusCycles + 1;
     const isFinalPlannedCycle = snapshot.sessionMode === "planned" && snapshot.currentCycle >= snapshot.plannedCycles;
-    const base = { ...snapshot, completedFocusCycles: completed, remainingSeconds: 0, phaseStartedAt: null, isRunning: false };
+    const base = { ...stopped, completedFocusCycles: completed };
     if (isFinalPlannedCycle) {
-      if (snapshot.afterFinalCycleBehavior === "ask") return { ...base, phase: "paused", awaitingFinalChoice: true };
-      if (snapshot.afterFinalCycleBehavior === "wrap_up") return { ...base, phase: "completed", awaitingFinalChoice: false };
-      return startPhase(base, "long_break", snapshot.longBreakMinutes * 60, now);
+      if (snapshot.afterFinalCycleBehavior === "ask") return { ...base, phase: "paused", awaitingFinalChoice: true, awaitingNextPhase: null };
+      if (snapshot.afterFinalCycleBehavior === "wrap_up") return { ...base, awaitingNextPhase: "completed" };
+      return { ...base, awaitingNextPhase: "long_break" };
     }
-    return startPhase(base, "break", snapshotBreakSeconds(snapshot), now);
+    return { ...base, awaitingNextPhase: "break" };
   }
 
   if (snapshot.phase === "break") {
-    return startPhase({ ...snapshot, currentCycle: snapshot.currentCycle + 1 }, "focus", snapshotFocusSeconds(snapshot), now);
+    return { ...stopped, awaitingNextPhase: "focus" };
   }
 
   if (snapshot.phase === "long_break") {
-    return { ...snapshot, phase: "completed", remainingSeconds: 0, isRunning: false, phaseStartedAt: null, awaitingFinalChoice: false };
+    return { ...stopped, awaitingNextPhase: "completed" };
   }
 
   return snapshot;
+}
+
+export function confirmNextPhase(snapshot: SessionTimerSnapshot, now = Date.now()): SessionTimerSnapshot {
+  if (!snapshot.awaitingNextPhase) return snapshot;
+  const queued = snapshot.awaitingNextPhase;
+  if (queued === "break") {
+    return startPhase(snapshot, "break", snapshotBreakSeconds(snapshot), now);
+  }
+  if (queued === "long_break") {
+    return startPhase(snapshot, "long_break", snapshot.longBreakMinutes * 60, now);
+  }
+  if (queued === "focus") {
+    return startPhase({ ...snapshot, currentCycle: snapshot.currentCycle + 1 }, "focus", snapshotFocusSeconds(snapshot), now);
+  }
+  // "completed"
+  return { ...snapshot, phase: "completed", isRunning: false, remainingSeconds: 0, phaseStartedAt: null, awaitingFinalChoice: false, awaitingNextPhase: null };
 }
 
 export function continueAnotherCycle(snapshot: SessionTimerSnapshot, now = Date.now()): SessionTimerSnapshot {
@@ -164,7 +188,7 @@ export function takeLongBreak(snapshot: SessionTimerSnapshot, now = Date.now()):
 }
 
 export function completeSessionSnapshot(snapshot: SessionTimerSnapshot): SessionTimerSnapshot {
-  return { ...snapshot, phase: "completed", isRunning: false, remainingSeconds: 0, phaseStartedAt: null, awaitingFinalChoice: false };
+  return { ...snapshot, phase: "completed", isRunning: false, remainingSeconds: 0, phaseStartedAt: null, awaitingFinalChoice: false, awaitingNextPhase: null };
 }
 
 export function snapshotFocusSeconds(snapshot: SessionTimerSnapshot) {
