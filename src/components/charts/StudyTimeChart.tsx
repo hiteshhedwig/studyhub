@@ -16,7 +16,11 @@ export function StudyTimeChart({ data }: { data: { label: string; minutes: numbe
   const surface = cssVar("--surface-raised", "#1d2530");
   const text = cssVar("--text-primary", "#e7eef6");
 
+  // maintainAspectRatio: false requires a parent with a *definite* height.
+  // Without this fixed wrapper the canvas and its parent keep resizing each
+  // other and the chart grows on every render.
   return (
+    <div style={{ position: "relative", height: 260, width: "100%" }}>
     <Bar
       data={{
         labels: data.map((item) => item.label),
@@ -53,5 +57,6 @@ export function StudyTimeChart({ data }: { data: { label: string; minutes: numbe
         }
       }}
     />
+    </div>
   );
 }

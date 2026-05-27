@@ -1,13 +1,28 @@
-import { Link, useParams } from "react-router-dom";
-import { Trash2 } from "lucide-react";
+import { Link, useParams, useNavigate } from "react-router-dom";
+import { ChevronLeft, ExternalLink, Trash2 } from "lucide-react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { useAppStore } from "../../store/appStore";
+import { confirmDialog, toast } from "../../store/uiStore";
+import { openLocalPath } from "../../services/fileStorage";
 
 export function TopicsPage() {
   const store = useAppStore();
+  const navigate = useNavigate();
   const { topics, sessions, questions, revisions } = store;
+
+  async function deleteTopic(topicId: string, title: string) {
+    const ok = await confirmDialog({
+      title: `Delete "${title}"?`,
+      message: "Removes the topic and every session, cheatsheet link, question, and revision attached to it.",
+      confirmLabel: "Delete topic",
+      tone: "danger"
+    });
+    if (!ok) return;
+    await store.deleteTopic(topicId);
+    toast.success("Topic deleted.");
+  }
 
   return (
     <>
@@ -19,12 +34,41 @@ export function TopicsPage() {
           const topicQuestions = questions.filter((question) => question.topic_id === topic.id);
           const pending = revisions.filter((revision) => revision.topic_id === topic.id && revision.status === "pending").length;
           return (
-            <article className="card" key={topic.id}>
-              <span className="pill" style={{ borderColor: topic.category_color }}>{topic.category_name}</span>
-              <div className="split"><Link to={`/topics/${topic.id}`} style={{ textDecoration: "none" }}><h2>{topic.title}</h2></Link><button className="btn danger icon" aria-label="Delete topic" onClick={() => { if (confirm(`Delete topic "${topic.title}" and all its sessions, cheatsheets, questions, and revisions?`)) void store.deleteTopic(topic.id); }}><Trash2 size={16} /></button></div>
+            <article
+              className="card link"
+              key={topic.id}
+              tabIndex={0}
+              role="link"
+              onClick={(event) => {
+                // Don't navigate if the click landed on the delete button.
+                if ((event.target as HTMLElement).closest("button")) return;
+                navigate(`/topics/${topic.id}`);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate(`/topics/${topic.id}`);
+                }
+              }}
+            >
+              <div className="split">
+                <span className="pill" style={{ borderColor: topic.category_color }}>{topic.category_name}</span>
+                <button
+                  className="btn danger icon"
+                  aria-label={`Delete ${topic.title}`}
+                  onClick={(event) => { event.stopPropagation(); void deleteTopic(topic.id, topic.title); }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              <h2 style={{ margin: "8px 0 0 0" }}>{topic.title}</h2>
               <p className="muted">{topic.description || "No description yet."}</p>
               <div className="progress"><span style={{ width: `${topic.mastery_score}%` }} /></div>
-              <div className="split muted"><span>{topicSessions.length} sessions</span><span>{topicQuestions.length} questions</span><span>{pending} due</span></div>
+              <div className="split muted" style={{ fontSize: "var(--text-sm)" }}>
+                <span>{topicSessions.length} sessions</span>
+                <span>{topicQuestions.length} questions</span>
+                <span>{pending} due</span>
+              </div>
             </article>
           );
         })}
@@ -38,13 +82,24 @@ export function TopicDetailPage() {
   const { topics, sessions, cheatsheets, questionSets, questions, revisions, links } = useAppStore();
   const topic = topics.find((item) => item.id === topicId);
 
-  if (!topic) return <EmptyState>Topic not found.</EmptyState>;
+  if (!topic) return (
+    <>
+      <Link to="/topics" className="breadcrumb"><ChevronLeft size={14} /> Topics</Link>
+      <EmptyState>Topic not found.</EmptyState>
+    </>
+  );
 
   const topicSessions = sessions.filter((session) => session.topic_id === topic.id);
   const totalMinutes = topicSessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
+  const topicSheets = cheatsheets.filter((item) => item.topic_id === topic.id);
+  const topicSets = questionSets.filter((item) => item.topic_id === topic.id);
+  const topicQuestions = questions.filter((item) => item.topic_id === topic.id);
+  const topicRevisions = revisions.filter((item) => item.topic_id === topic.id);
+  const topicLinks = links.filter((item) => item.topic_id === topic.id);
 
   return (
     <>
+      <Link to="/topics" className="breadcrumb"><ChevronLeft size={14} /> Topics</Link>
       <PageHeader title={topic.title} eyebrow={`${topic.category_name} · ${topic.status}`} />
       <section className="grid three">
         <div className="card stat"><span className="muted">Mastery</span><strong>{topic.mastery_score}%</strong></div>
@@ -52,17 +107,102 @@ export function TopicDetailPage() {
         <div className="card stat"><span className="muted">Next revision</span><strong>{topic.next_revision_at ? formatDistanceToNow(parseISO(topic.next_revision_at), { addSuffix: true }) : "None"}</strong></div>
       </section>
       <section className="grid two" style={{ marginTop: 20 }}>
-        <div className="card"><h2>Sessions</h2><List items={topicSessions.map((session) => `${session.title} · ${session.pomodoros_completed} pomodoros`)} /></div>
-        <div className="card"><h2>Cheatsheets</h2><List items={cheatsheets.filter((item) => item.topic_id === topic.id).map((item) => item.title)} /></div>
-        <div className="card"><h2>Question sets</h2><List items={questionSets.filter((item) => item.topic_id === topic.id).map((item) => item.title)} /></div>
-        <div className="card"><h2>Active recall</h2><List items={questions.filter((item) => item.topic_id === topic.id).slice(0, 8).map((item) => item.question)} /></div>
-        <div className="card"><h2>Revision timeline</h2><List items={revisions.filter((item) => item.topic_id === topic.id).map((item) => `${formatDistanceToNow(parseISO(item.due_at), { addSuffix: true })} · ${item.status}`)} /></div>
-        <div className="card"><h2>Resource links</h2><List items={links.filter((item) => item.topic_id === topic.id).map((item) => item.title)} /></div>
+        <div className="card">
+          <h2>Sessions</h2>
+          {topicSessions.length ? (
+            <div className="list">
+              {topicSessions.map((session) => (
+                <div className="list-item" key={session.id}>
+                  <div className="split">
+                    <span>{session.title}</span>
+                    <span className="muted">{session.pomodoros_completed} pomodoros</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState>No sessions yet.</EmptyState>}
+        </div>
+
+        <div className="card">
+          <h2>Cheatsheets</h2>
+          {topicSheets.length ? (
+            <div className="list">
+              {topicSheets.map((sheet) => (
+                <div className="list-item" key={sheet.id}>
+                  <div className="split">
+                    <span className="truncate" title={sheet.file_path}>{sheet.title}</span>
+                    <button className="btn small" onClick={() => void openLocalPath(sheet.file_path)}><ExternalLink size={14} />Open</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState>No cheatsheets yet.</EmptyState>}
+        </div>
+
+        <div className="card">
+          <h2>Question sets</h2>
+          {topicSets.length ? (
+            <div className="list">
+              {topicSets.map((set) => {
+                const count = topicQuestions.filter((q) => q.question_set_id === set.id).length;
+                return (
+                  <div className="list-item" key={set.id}>
+                    <div className="split">
+                      <span>{set.title}</span>
+                      <span className="muted">{count} questions</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <EmptyState>No question sets yet.</EmptyState>}
+        </div>
+
+        <div className="card">
+          <h2>Active recall</h2>
+          {topicQuestions.length ? (
+            <div className="list">
+              {topicQuestions.slice(0, 8).map((q) => (
+                <div className="list-item" key={q.id}>
+                  <div className="split">
+                    <span className="truncate" title={q.question}>{q.question}</span>
+                    <span className="muted">{q.mastery_score}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState>No questions yet.</EmptyState>}
+        </div>
+
+        <div className="card">
+          <h2>Revision timeline</h2>
+          {topicRevisions.length ? (
+            <div className="list">
+              {topicRevisions.map((revision) => (
+                <div className="list-item" key={revision.id}>
+                  <div className="split">
+                    <span>{formatDistanceToNow(parseISO(revision.due_at), { addSuffix: true })}</span>
+                    <span className="muted">{revision.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState>No revisions scheduled.</EmptyState>}
+        </div>
+
+        <div className="card">
+          <h2>Resource links</h2>
+          {topicLinks.length ? (
+            <div className="list">
+              {topicLinks.map((link) => (
+                <div className="list-item" key={link.id}>
+                  <span>{link.title}</span>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState>No links yet.</EmptyState>}
+        </div>
       </section>
     </>
   );
-}
-
-function List({ items }: { items: string[] }) {
-  return items.length ? <div className="list">{items.map((item, index) => <div className="list-item" key={`${item}-${index}`}>{item}</div>)}</div> : <EmptyState>Nothing here yet.</EmptyState>;
 }

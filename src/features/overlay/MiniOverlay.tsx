@@ -70,10 +70,23 @@ export function MiniOverlay() {
   }, [timer]);
 
   useEffect(() => {
-    const theme = localStorage.getItem("study-hub-theme") ?? "warm-dark";
-    const resolved = theme === "system" ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "soft-light" : "warm-dark") : theme;
-    document.documentElement.dataset.theme = resolved;
     document.body.classList.add("overlay-body");
+    const media = window.matchMedia("(prefers-color-scheme: light)");
+    function apply() {
+      const theme = localStorage.getItem("study-hub-theme") ?? "warm-dark";
+      const resolved = theme === "system" ? (media.matches ? "soft-light" : "warm-dark") : theme;
+      document.documentElement.dataset.theme = resolved;
+    }
+    apply();
+    function onStorage(event: StorageEvent) {
+      if (event.key === "study-hub-theme") apply();
+    }
+    window.addEventListener("storage", onStorage);
+    media.addEventListener("change", apply);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      media.removeEventListener("change", apply);
+    };
   }, []);
 
   async function closeOverlay() {

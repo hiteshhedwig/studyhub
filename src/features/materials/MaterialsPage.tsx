@@ -5,31 +5,59 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { useAppStore } from "../../store/appStore";
 import { inferFileType, pickLocalFile, readTextFile } from "../../services/fileStorage";
 import { parseQuestionImport } from "../../services/importQuestions";
+import { toast } from "../../store/uiStore";
 
 export function MaterialsPage() {
   const store = useAppStore();
   const [topicId, setTopicId] = useState(store.topics[0]?.id ?? "");
-  const [message, setMessage] = useState("");
+  const [showNewTopic, setShowNewTopic] = useState(false);
+  const [newTopicTitle, setNewTopicTitle] = useState("");
+  const [newTopicCategory, setNewTopicCategory] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const selectedTopic = store.topics.find((topic) => topic.id === topicId);
   const topicSheets = store.cheatsheets.filter((sheet) => sheet.topic_id === topicId);
   const topicSets = store.questionSets.filter((set) => set.topic_id === topicId);
 
+  async function handleCreateTopic() {
+    const title = newTopicTitle.trim();
+    if (!title) {
+      toast.warning("Give the topic a title.");
+      return;
+    }
+    setCreating(true);
+    try {
+      const categoryName = newTopicCategory.trim() || "Personal Study";
+      let category = store.categories.find((item) => item.name.toLowerCase() === categoryName.toLowerCase());
+      if (!category) category = await store.createCategory(categoryName);
+      const topic = await store.createTopic({ categoryId: category.id, title });
+      setTopicId(topic.id);
+      setNewTopicTitle("");
+      setNewTopicCategory("");
+      setShowNewTopic(false);
+      toast.success(`Created topic "${topic.title}".`);
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not create the topic.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   async function attachCheatsheet() {
     if (!topicId) {
-      setMessage("Choose a topic before attaching a cheatsheet.");
+      toast.warning("Choose a topic before attaching a cheatsheet.");
       return;
     }
     const path = await pickLocalFile();
     if (!path) return;
     const title = path.split(/[\\/]/).pop() ?? "Cheatsheet";
     await store.addCheatsheet({ topicId, title, filePath: path, fileType: inferFileType(path) });
-    setMessage(`Attached ${title} to ${selectedTopic?.title ?? "topic"}.`);
+    toast.success(`Attached ${title} to ${selectedTopic?.title ?? "topic"}.`);
   }
 
   async function importQuestions() {
     if (!topicId) {
-      setMessage("Choose a topic before importing Q&A.");
+      toast.warning("Choose a topic before importing Q&A.");
       return;
     }
     const path = await pickLocalFile(["json"]);
@@ -37,13 +65,13 @@ export function MaterialsPage() {
     try {
       const parsed = parseQuestionImport(await readTextFile(path));
       if (!parsed.ok) {
-        setMessage(parsed.error);
+        toast.danger(parsed.error);
         return;
       }
       await store.importQuestionSetForTopic(parsed.data, topicId);
-      setMessage(`Imported ${parsed.data.questions.length} questions into ${selectedTopic?.title ?? "topic"}.`);
+      toast.success(`Imported ${parsed.data.questions.length} questions into ${selectedTopic?.title ?? "topic"}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not import that Q&A file.");
+      toast.danger(error instanceof Error ? error.message : "Could not import that Q&A file.");
     }
   }
 
@@ -61,10 +89,34 @@ export function MaterialsPage() {
             </select>
           </label>
           <div className="button-row">
+            <button className="btn" type="button" onClick={() => setShowNewTopic((open) => !open)}>
+              {showNewTopic ? "Cancel new topic" : "+ New topic"}
+            </button>
+          </div>
+          {showNewTopic ? (
+            <div className="card grid">
+              <h3 style={{ margin: 0 }}>New topic</h3>
+              <p className="muted" style={{ marginTop: 0 }}>For materials you already have locally — no Pomodoro required.</p>
+              <label className="field">
+                <span>Topic title</span>
+                <input className="input" value={newTopicTitle} onChange={(event) => setNewTopicTitle(event.target.value)} placeholder="Decision Trees" autoFocus />
+              </label>
+              <label className="field">
+                <span>Category (existing or new)</span>
+                <input className="input" list="materials-category-options" value={newTopicCategory} onChange={(event) => setNewTopicCategory(event.target.value)} placeholder="Personal Study" />
+                <datalist id="materials-category-options">
+                  {store.categories.map((category) => <option key={category.id} value={category.name} />)}
+                </datalist>
+              </label>
+              <div className="button-row">
+                <button className="btn primary" type="button" onClick={handleCreateTopic} disabled={creating}>{creating ? "Creating…" : "Create topic"}</button>
+              </div>
+            </div>
+          ) : null}
+          <div className="button-row">
             <button className="btn" onClick={attachCheatsheet}><FilePlus2 size={17} />Attach cheatsheet</button>
             <button className="btn primary" onClick={importQuestions}><Import size={17} />Import Q&A JSON</button>
           </div>
-          {message ? <p className="muted">{message}</p> : null}
         </div>
 
         <div className="card grid">

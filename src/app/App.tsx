@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { AppLayout } from "../components/layout/AppLayout";
+import { ToastViewport } from "../components/ui/ToastViewport";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { useAppStore } from "../store/appStore";
 
 export function App() {
@@ -39,5 +41,11 @@ export function App() {
     );
   }
 
-  return <AppLayout />;
+  return (
+    <>
+      <AppLayout />
+      <ToastViewport />
+      <ConfirmDialog />
+    </>
+  );
 }
