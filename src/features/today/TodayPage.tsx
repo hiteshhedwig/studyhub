@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { format, isToday, parseISO } from "date-fns";
-import { Layers2, Paperclip, Play, Square } from "lucide-react";
+import { Link } from "react-router-dom";
+import { format, isPast, isToday, parseISO } from "date-fns";
+import { ChevronRight, Layers2, Paperclip, Play, Square } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { TimerRing } from "../../components/ui/TimerRing";
@@ -80,6 +81,7 @@ export function TodayPage() {
 
   const todaySessions = store.sessions.filter((session) => isToday(parseISO(session.started_at)));
   const dueRevisions = store.revisions.filter((revision) => revision.status === "pending" && isToday(parseISO(revision.due_at)));
+  const lateRevisions = store.revisions.filter((revision) => revision.status === "pending" && isPast(parseISO(revision.due_at)) && !isToday(parseISO(revision.due_at)));
   const dueQuestions = store.questions.filter((question) => isToday(parseISO(question.next_due_at)) || parseISO(question.next_due_at) < new Date());
   const todayMinutes = todaySessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
   const pomodoros = todaySessions.reduce((sum, session) => sum + session.pomodoros_completed, 0);
@@ -419,7 +421,48 @@ export function TodayPage() {
           ) : (
             <div className="grid">
               <h2>Due today</h2>
-              {dueRevisions.length || dueQuestions.length ? <p className="muted">{dueRevisions.length} topic revisions and {dueQuestions.length} questions are ready for review.</p> : <EmptyState>Nothing is due. A good day for one careful session or a light review.</EmptyState>}
+              {dueRevisions.length || lateRevisions.length || dueQuestions.length ? (
+                <>
+                  {lateRevisions.length ? (
+                    <>
+                      <p className="muted" style={{ margin: 0, color: "var(--danger)" }}>{lateRevisions.length} late · catch these first</p>
+                      <div className="list">
+                        {lateRevisions.slice(0, 5).map((revision) => (
+                          <Link key={revision.id} to="/revisions" className="list-item" style={{ textDecoration: "none", color: "inherit" }}>
+                            <div className="split">
+                              <span className="truncate">{revision.topic_title ?? "Topic"}</span>
+                              <span className="muted">{format(parseISO(revision.due_at), "MMM d")}</span>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  {dueRevisions.length ? (
+                    <>
+                      <p className="muted" style={{ margin: 0 }}>{dueRevisions.length} due today</p>
+                      <div className="list">
+                        {dueRevisions.map((revision) => (
+                          <Link key={revision.id} to="/revisions" className="list-item" style={{ textDecoration: "none", color: "inherit" }}>
+                            <div className="split">
+                              <span className="truncate">{revision.topic_title ?? "Topic"}</span>
+                              <span className="muted">{revision.type.replace("_", " ")}</span>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  {dueQuestions.length ? (
+                    <Link to="/practice" className="list-item" style={{ textDecoration: "none", color: "inherit" }}>
+                      <div className="split">
+                        <span><strong>{dueQuestions.length}</strong> question{dueQuestions.length === 1 ? "" : "s"} ready to practice</span>
+                        <ChevronRight size={16} />
+                      </div>
+                    </Link>
+                  ) : null}
+                </>
+              ) : <EmptyState>Nothing is due. A good day for one careful session or a light review.</EmptyState>}
               {recentTopics.length ? (
                 <>
                   <h3 style={{ margin: 0 }}>Recent topics</h3>

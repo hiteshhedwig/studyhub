@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { isPast, isToday, parseISO } from "date-fns";
 import { BarChart3, BookMarked, CalendarClock, CheckCircle2, ClipboardList, FolderInput, GraduationCap, Home, Library, MessageSquareText, Settings, TimerReset } from "lucide-react";
+import { useAppStore } from "../../store/appStore";
 
 const navGroups = [
   {
@@ -30,6 +32,14 @@ const navGroups = [
 ];
 
 export function AppLayout() {
+  const revisions = useAppStore((state) => state.revisions);
+  const revisionAlertCount = revisions.filter((r) => {
+    if (r.status !== "pending") return false;
+    const due = parseISO(r.due_at);
+    return isToday(due) || isPast(due);
+  }).length;
+  const badgeFor = (to: string): number | undefined => (to === "/revisions" && revisionAlertCount > 0 ? revisionAlertCount : undefined);
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -49,10 +59,17 @@ export function AppLayout() {
               <div className="nav-list">
                 {group.items.map((item) => {
                   const Icon = item.icon;
+                  const badge = badgeFor(item.to);
                   return (
-                    <NavLink className="nav-link" key={item.to} to={item.to} end={item.to === "/"}>
+                    <NavLink
+                      className={({ isActive }) => `nav-link${badge ? " alert" : ""}${isActive ? " active" : ""}`}
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === "/"}
+                    >
                       <Icon size={18} aria-hidden="true" />
-                      {item.label}
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      {badge ? <span className="nav-badge" aria-label={`${badge} due`}>{badge}</span> : null}
                     </NavLink>
                   );
                 })}
