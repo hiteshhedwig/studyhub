@@ -1,9 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { StudyTimeChart } from "../../components/charts/StudyTimeChart";
+import { RevisionHistoryTimeline, summarizeRevisions } from "../../components/ui/RevisionHistoryTimeline";
 import { useAppStore } from "../../store/appStore";
 import { dailyStudySeries, rankedTopics, recallAccuracy, revisionCompletionRate } from "../../services/statsService";
+import type { RevisionSchedule } from "../../db/repositories/types";
 
 export function StatsPage() {
   const { sessions, revisions, questions, topics } = useAppStore();
@@ -14,6 +16,27 @@ export function StatsPage() {
   const missed = revisions.filter((revision) => revision.status === "missed").length;
   const weak = rankedTopics(topics, "weak");
   const strong = rankedTopics(topics, "strong");
+
+  const historyByTopic = useMemo(() => {
+    const map = new Map<string, RevisionSchedule[]>();
+    revisions.forEach((r) => {
+      if (r.status !== "completed" || !r.completed_at) return;
+      const arr = map.get(r.topic_id) ?? [];
+      arr.push(r);
+      map.set(r.topic_id, arr);
+    });
+    return Array.from(map.entries())
+      .map(([topicId, items]) => ({
+        topicId,
+        title: topics.find((t) => t.id === topicId)?.title ?? items[0].topic_title ?? "Untitled",
+        items: [...items].sort((a, b) => (a.completed_at! < b.completed_at! ? -1 : 1))
+      }))
+      .filter((entry) => entry.items.length >= 2)
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [revisions, topics]);
+
+  const [historyTopicId, setHistoryTopicId] = useState<string>("");
+  const selectedHistory = historyByTopic.find((entry) => entry.topicId === historyTopicId) ?? historyByTopic[0];
 
   const timeByTopic = useMemo(() => {
     return topics
@@ -45,6 +68,34 @@ export function StatsPage() {
         <div className="card" style={{ minHeight: 320 }}>
           <h2>Daily study time</h2>
           {series.some((item) => item.minutes) ? <StudyTimeChart data={series} /> : <EmptyState>Charts will fill in after completed Pomodoros.</EmptyState>}
+        </div>
+      </section>
+
+      <section style={{ marginTop: 20 }}>
+        <div className="card grid">
+          <div className="split">
+            <h2>Revision history by topic</h2>
+            {historyByTopic.length > 0 ? (
+              <select
+                className="input"
+                style={{ maxWidth: 280 }}
+                value={selectedHistory?.topicId ?? ""}
+                onChange={(event) => setHistoryTopicId(event.target.value)}
+              >
+                {historyByTopic.map((entry) => (
+                  <option key={entry.topicId} value={entry.topicId}>{entry.title} ({entry.items.length})</option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+          {selectedHistory ? (
+            <>
+              <p className="muted" style={{ margin: 0 }}>{selectedHistory.items.length} reviews · {summarizeRevisions(selectedHistory.items)}</p>
+              <RevisionHistoryTimeline history={selectedHistory.items} ariaLabel={`Revision history for ${selectedHistory.title}`} />
+            </>
+          ) : (
+            <EmptyState>Topics with two or more completed revisions will show their rating arc here.</EmptyState>
+          )}
         </div>
       </section>
 

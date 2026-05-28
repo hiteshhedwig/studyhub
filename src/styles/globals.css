@@ -482,6 +482,48 @@ article.card:hover {
   background: color-mix(in srgb, var(--success) 12%, transparent);
 }
 
+/* Revision history timeline (Stats page) */
+.revision-history-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.revision-history-chip {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-width: 72px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  font-size: var(--text-xs);
+  line-height: 1.1;
+}
+
+.revision-history-chip strong { font-size: var(--text-sm); }
+.revision-history-chip small { color: var(--text-secondary); }
+.revision-history-chip span { text-transform: capitalize; }
+
+.revision-history-chip.forgot {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.revision-history-chip.hard {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+.revision-history-chip.good,
+.revision-history-chip.easy {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
 /* ---------- Fields ---------- */
 .field {
   display: grid;
@@ -643,6 +685,16 @@ article.card:hover {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
+  min-width: 0;
+}
+
+.split > .truncate {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.split > :not(.truncate) {
+  flex: 0 0 auto;
 }
 
 .muted {

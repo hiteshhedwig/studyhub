@@ -16,6 +16,13 @@ import { getDefaultPomodoro, POMODORO_PRESETS } from "../../services/preferences
 import { confirmDialog, toast } from "../../store/uiStore";
 import type { AfterFinalCycleBehavior, SessionMode } from "../../types/timer";
 
+function formatMinutes(total: number) {
+  if (total < 60) return `${total}m`;
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
 function statusLabel(timer: { phase: string; awaitingFinalChoice: boolean; awaitingNextPhase: string | null }) {
   if (timer.awaitingFinalChoice) return "Cycle complete";
   if (timer.awaitingNextPhase === "break") return "Focus done";
@@ -260,7 +267,7 @@ export function TodayPage() {
         actions={!store.activeSession ? <button className="btn primary" onClick={handleStart}><Play size={17} />Start study session</button> : null}
       />
       <section className="grid two">
-        <div className="card stat"><span className="muted">Focused today</span><strong>{todayMinutes}m</strong></div>
+        <div className="card stat"><span className="muted">Focused today</span><strong>{formatMinutes(todayMinutes)}</strong></div>
         <div className="card stat"><span className="muted">Pomodoros</span><strong>{pomodoros}</strong></div>
       </section>
 

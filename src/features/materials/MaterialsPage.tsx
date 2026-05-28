@@ -125,11 +125,33 @@ export function MaterialsPage() {
             <div className="grid two">
               <div>
                 <h3>Cheatsheets</h3>
-                {topicSheets.length ? <div className="list">{topicSheets.map((sheet) => <div className="list-item" key={sheet.id}>{sheet.title}<span className="muted">{sheet.file_type}</span></div>)}</div> : <EmptyState>No cheatsheets attached.</EmptyState>}
+                {topicSheets.length ? (
+                  <div className="list">
+                    {topicSheets.map((sheet) => (
+                      <div className="list-item" key={sheet.id}>
+                        <div className="split">
+                          <span className="truncate" title={sheet.title}>{sheet.title}</span>
+                          <span className="muted">{sheet.file_type}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <EmptyState>No cheatsheets attached.</EmptyState>}
               </div>
               <div>
                 <h3>Q&A sets</h3>
-                {topicSets.length ? <div className="list">{topicSets.map((set) => <div className="list-item" key={set.id}>{set.title}<span className="muted">{set.source}</span></div>)}</div> : <EmptyState>No question sets imported.</EmptyState>}
+                {topicSets.length ? (
+                  <div className="list">
+                    {topicSets.map((set) => (
+                      <div className="list-item" key={set.id}>
+                        <div className="split">
+                          <span className="truncate" title={set.title}>{set.title}</span>
+                          <span className="muted">{set.source}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <EmptyState>No question sets imported.</EmptyState>}
               </div>
             </div>
           ) : <EmptyState>Create or choose a topic first.</EmptyState>}

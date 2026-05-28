@@ -1,11 +1,19 @@
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { ChevronLeft, ExternalLink, Trash2 } from "lucide-react";
+import { BookOpen, ChevronLeft, ExternalLink, FileText, MessageSquare, Trash2, Video } from "lucide-react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { useAppStore } from "../../store/appStore";
 import { confirmDialog, toast } from "../../store/uiStore";
 import { openLocalPath } from "../../services/fileStorage";
+import { RevisionHistoryTimeline, summarizeRevisions } from "../../components/ui/RevisionHistoryTimeline";
+
+function formatMinutes(total: number) {
+  if (total < 60) return `${total}m`;
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
 
 export function TopicsPage() {
   const store = useAppStore();
@@ -103,7 +111,7 @@ export function TopicDetailPage() {
       <PageHeader title={topic.title} eyebrow={`${topic.category_name} · ${topic.status}`} />
       <section className="grid three">
         <div className="card stat"><span className="muted">Mastery</span><strong>{topic.mastery_score}%</strong></div>
-        <div className="card stat"><span className="muted">Focused time</span><strong>{totalMinutes}m</strong></div>
+        <div className="card stat"><span className="muted">Focused time</span><strong>{formatMinutes(totalMinutes)}</strong></div>
         <div className="card stat"><span className="muted">Next revision</span><strong>{topic.next_revision_at ? formatDistanceToNow(parseISO(topic.next_revision_at), { addSuffix: true }) : "None"}</strong></div>
       </section>
       <section className="grid two" style={{ marginTop: 20 }}>
@@ -174,31 +182,67 @@ export function TopicDetailPage() {
           ) : <EmptyState>No questions yet.</EmptyState>}
         </div>
 
-        <div className="card">
+        <div className="card grid">
           <h2>Revision timeline</h2>
-          {topicRevisions.length ? (
-            <div className="list">
-              {topicRevisions.map((revision) => (
-                <div className="list-item" key={revision.id}>
-                  <div className="split">
-                    <span>{formatDistanceToNow(parseISO(revision.due_at), { addSuffix: true })}</span>
-                    <span className="muted">{revision.status}</span>
+          {(() => {
+            const completedHistory = topicRevisions
+              .filter((r) => r.status === "completed" && r.completed_at)
+              .sort((a, b) => (a.completed_at! < b.completed_at! ? -1 : 1));
+            const upcoming = topicRevisions
+              .filter((r) => r.status === "pending")
+              .sort((a, b) => (a.due_at < b.due_at ? -1 : 1));
+            if (completedHistory.length === 0 && upcoming.length === 0) {
+              return <EmptyState>No revisions scheduled.</EmptyState>;
+            }
+            return (
+              <>
+                {completedHistory.length ? (
+                  <>
+                    <p className="muted" style={{ margin: 0 }}>{completedHistory.length} past review{completedHistory.length === 1 ? "" : "s"} · {summarizeRevisions(completedHistory)}</p>
+                    <RevisionHistoryTimeline history={completedHistory} ariaLabel={`Past revisions for ${topic.title}`} />
+                  </>
+                ) : <p className="muted" style={{ margin: 0 }}>No past reviews yet.</p>}
+                {upcoming.length ? (
+                  <div className="list" style={{ marginTop: 8 }}>
+                    {upcoming.slice(0, 5).map((revision) => (
+                      <div className="list-item" key={revision.id}>
+                        <div className="split">
+                          <span>{formatDistanceToNow(parseISO(revision.due_at), { addSuffix: true })}</span>
+                          <span className="muted">upcoming</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : <EmptyState>No revisions scheduled.</EmptyState>}
+                ) : null}
+              </>
+            );
+          })()}
         </div>
 
         <div className="card">
           <h2>Resource links</h2>
           {topicLinks.length ? (
             <div className="list">
-              {topicLinks.map((link) => (
-                <div className="list-item" key={link.id}>
-                  <span>{link.title}</span>
-                </div>
-              ))}
+              {topicLinks.map((link) => {
+                const Icon = link.kind === "chatgpt" ? MessageSquare
+                  : link.kind === "video" ? Video
+                  : link.kind === "docs" ? FileText
+                  : link.kind === "article" ? BookOpen
+                  : ExternalLink;
+                return (
+                  <div className="list-item" key={link.id}>
+                    <div className="split">
+                      <span className="truncate" title={link.url}>
+                        <Icon size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                        {link.title || link.url}
+                      </span>
+                      <button className="btn small" onClick={() => void openLocalPath(link.url)} title={link.url}>
+                        <ExternalLink size={14} />Open
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : <EmptyState>No links yet.</EmptyState>}
         </div>
