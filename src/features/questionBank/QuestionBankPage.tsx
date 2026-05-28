@@ -43,18 +43,6 @@ export function QuestionBankPage() {
     }
   }
 
-  async function deleteQuestion(id: string) {
-    const ok = await confirmDialog({
-      title: "Delete this question?",
-      message: "Its review history and schedule will be removed.",
-      confirmLabel: "Delete question",
-      tone: "danger"
-    });
-    if (!ok) return;
-    await store.deleteQuestion(id);
-    toast.success("Question deleted.");
-  }
-
   async function deleteSet(setId: string, title: string) {
     const ok = await confirmDialog({
       title: `Delete set "${title}"?`,
@@ -121,17 +109,14 @@ export function QuestionBankPage() {
               const isOpen = revealed.has(question.id);
               return (
                 <article className="card" key={question.id}>
-                  <div className="split">
-                    <div className="qa-row" style={{ minWidth: 0 }}>
-                      <span className="pill">{question.topic_title} · {question.difficulty}</span>
-                      <h2 style={{ margin: 0 }}>{question.question}</h2>
-                      <button type="button" className="qa-toggle" onClick={() => toggleRevealed(question.id)}>
-                        {isOpen ? "Hide answer" : "Show answer"}
-                      </button>
-                      {isOpen ? <p>{question.answer}</p> : null}
-                      <p className="muted" style={{ margin: 0 }}>Due {new Date(question.next_due_at).toLocaleDateString()} · Mastery {question.mastery_score}%</p>
-                    </div>
-                    <button className="btn danger icon" aria-label="Delete question" onClick={() => void deleteQuestion(question.id)}><Trash2 size={16} /></button>
+                  <div className="qa-row">
+                    <span className="pill">{question.topic_title} · {question.difficulty}</span>
+                    <h2 style={{ margin: 0 }}>{question.question}</h2>
+                    <button type="button" className="qa-toggle" onClick={() => toggleRevealed(question.id)}>
+                      {isOpen ? "Hide answer" : "Show answer"}
+                    </button>
+                    {isOpen ? <p style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}>{question.answer}</p> : null}
+                    <p className="muted" style={{ margin: 0 }}>Due {new Date(question.next_due_at).toLocaleDateString()} · Mastery {question.mastery_score}%</p>
                   </div>
                 </article>
               );
