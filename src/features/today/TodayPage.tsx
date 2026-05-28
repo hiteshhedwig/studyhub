@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { format, isPast, isToday, parseISO } from "date-fns";
-import { ChevronRight, Layers2, Paperclip, Play, Square } from "lucide-react";
+import { ChevronRight, Flame, Layers2, Paperclip, Play, Square } from "lucide-react";
+import { currentFocusStreak } from "../../services/statsService";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { TimerRing } from "../../components/ui/TimerRing";
@@ -85,6 +86,9 @@ export function TodayPage() {
   const dueQuestions = store.questions.filter((question) => isToday(parseISO(question.next_due_at)) || parseISO(question.next_due_at) < new Date());
   const todayMinutes = todaySessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
   const pomodoros = todaySessions.reduce((sum, session) => sum + session.pomodoros_completed, 0);
+  const streak = currentFocusStreak(store.sessions);
+  const [cycleRatings, setCycleRatings] = useState<{ hard: number; ok: number; easy: number }>({ hard: 0, ok: 0, easy: 0 });
+  const [ratedThisPrompt, setRatedThisPrompt] = useState(false);
 
   // Recently used topics (max 5) for quick-start when no session is active.
   const recentTopics = useMemo(() => {
@@ -116,7 +120,18 @@ export function TodayPage() {
   useEffect(() => {
     setRecordedCycles(timer.completedFocusCycles);
     setNotes("");
+    setCycleRatings({ hard: 0, ok: 0, easy: 0 });
   }, [timer.activeSessionId]);
+
+  // Reset the "rated this prompt" flag whenever a new awaitingNextPhase appears.
+  useEffect(() => {
+    if (timer.awaitingNextPhase) setRatedThisPrompt(false);
+  }, [timer.awaitingNextPhase, timer.completedFocusCycles]);
+
+  function rateCycle(kind: "hard" | "ok" | "easy") {
+    setCycleRatings((prev) => ({ ...prev, [kind]: prev[kind] + 1 }));
+    setRatedThisPrompt(true);
+  }
 
   useEffect(() => {
     if (!store.activeSession || timer.activeSessionId !== store.activeSession.id) return;
@@ -269,7 +284,17 @@ export function TodayPage() {
         actions={!store.activeSession ? <button className="btn primary" onClick={handleStart}><Play size={17} />Start study session</button> : null}
       />
       <section className="grid two">
-        <div className="card stat"><span className="muted">Focused today</span><strong>{formatMinutes(todayMinutes)}</strong></div>
+        <div className="card stat">
+          <span className="muted" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            Focused today
+            {streak >= 3 ? (
+              <span className="streak-pill" title={`${streak}-day streak`}>
+                <Flame size={12} /> {streak}d
+              </span>
+            ) : null}
+          </span>
+          <strong>{formatMinutes(todayMinutes)}</strong>
+        </div>
         <div className="card stat"><span className="muted">Pomodoros</span><strong>{pomodoros}</strong></div>
       </section>
 
@@ -308,6 +333,18 @@ export function TodayPage() {
                 <div className="card">
                   <h3>{nextPhaseHeading(timer.awaitingNextPhase, timer.phase)}</h3>
                   <p className="muted">{nextPhaseHint(timer.awaitingNextPhase)}</p>
+                  {timer.phase === "focus" && (timer.awaitingNextPhase === "break" || timer.awaitingNextPhase === "long_break") ? (
+                    ratedThisPrompt ? (
+                      <p className="muted" style={{ margin: 0, fontSize: "var(--text-xs)" }}>Noted — your closeout will reflect this.</p>
+                    ) : (
+                      <div className="cycle-rate-row">
+                        <span className="muted" style={{ fontSize: "var(--text-xs)" }}>How was that cycle?</span>
+                        <button type="button" className="btn small rating hard" onClick={() => rateCycle("hard")}>Hard</button>
+                        <button type="button" className="btn small rating good" onClick={() => rateCycle("ok")}>OK</button>
+                        <button type="button" className="btn small rating easy" onClick={() => rateCycle("easy")}>Easy</button>
+                      </div>
+                    )
+                  ) : null}
                   <div className="button-row">
                     <button className="btn primary" onClick={timer.confirmNextPhase}>{nextPhaseActionLabel(timer.awaitingNextPhase)}</button>
                   </div>
@@ -399,6 +436,15 @@ export function TodayPage() {
           {store.activeSession ? (
             <div className="grid">
               <h2>Session closeout</h2>
+              {(cycleRatings.hard + cycleRatings.ok + cycleRatings.easy) > 0 ? (
+                <p className="muted" style={{ margin: 0, fontSize: "var(--text-xs)" }}>
+                  Your cycles felt: {[
+                    cycleRatings.hard ? `${cycleRatings.hard} hard` : null,
+                    cycleRatings.ok ? `${cycleRatings.ok} ok` : null,
+                    cycleRatings.easy ? `${cycleRatings.easy} easy` : null
+                  ].filter(Boolean).join(" · ")}
+                </p>
+              ) : null}
               <label className="field"><span>What did you understand?</span><textarea className="textarea" value={reflection} onChange={(event) => setReflection(event.target.value)} /></label>
               <div className="grid two">
                 <label className="field"><span>Understanding</span><input className="input" type="number" min="1" max="5" value={understanding} onChange={(event) => setUnderstanding(Number(event.target.value))} /></label>

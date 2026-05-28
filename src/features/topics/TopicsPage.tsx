@@ -1,5 +1,6 @@
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { BookOpen, ChevronLeft, ExternalLink, FileText, MessageSquare, Trash2, Video } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronLeft, ExternalLink, FileText, Minus, MessageSquare, Trash2, Video } from "lucide-react";
+import { topicHasLateRevision, topicTrend, type Trend } from "../../services/statsService";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -13,6 +14,16 @@ function formatMinutes(total: number) {
   const hours = Math.floor(total / 60);
   const minutes = total % 60;
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+}
+
+function TrendArrow({ trend }: { trend: Trend }) {
+  const Icon = trend === "up" ? ArrowUpRight : trend === "down" ? ArrowDownRight : Minus;
+  const label = trend === "up" ? "Improving" : trend === "down" ? "Slipping" : "Holding";
+  return (
+    <span className={`trend trend-${trend}`} title={label} aria-label={label}>
+      <Icon size={14} />
+    </span>
+  );
 }
 
 export function TopicsPage() {
@@ -41,9 +52,12 @@ export function TopicsPage() {
           const topicSessions = sessions.filter((session) => session.topic_id === topic.id);
           const topicQuestions = questions.filter((question) => question.topic_id === topic.id);
           const pending = revisions.filter((revision) => revision.topic_id === topic.id && revision.status === "pending").length;
+          const trend = topicTrend(topic.id, revisions);
+          const isLate = topicHasLateRevision(topic.id, revisions);
+          const edgeClass = isLate ? "edge-danger" : topic.status === "mastered" ? "edge-mastered" : "";
           return (
             <article
-              className="card link"
+              className={`card link ${edgeClass}`}
               key={topic.id}
               tabIndex={0}
               role="link"
@@ -69,7 +83,10 @@ export function TopicsPage() {
                   <Trash2 size={16} />
                 </button>
               </div>
-              <h2 style={{ margin: "8px 0 0 0" }}>{topic.title}</h2>
+              <h2 style={{ margin: "8px 0 0 0", display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="truncate">{topic.title}</span>
+                {trend ? <TrendArrow trend={trend} /> : null}
+              </h2>
               <p className="muted">{topic.description || "No description yet."}</p>
               <div className="progress"><span style={{ width: `${topic.mastery_score}%` }} /></div>
               <div className="split muted" style={{ fontSize: "var(--text-sm)" }}>

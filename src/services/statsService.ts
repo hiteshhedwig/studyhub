@@ -1,5 +1,67 @@
-import { eachDayOfInterval, format, isSameDay, parseISO, startOfDay, subDays } from "date-fns";
-import type { Question, RevisionSchedule, StudySession, Topic } from "../db/repositories/types";
+import { eachDayOfInterval, endOfWeek, format, isSameDay, parseISO, startOfDay, startOfWeek, subDays, subWeeks } from "date-fns";
+import type { Question, RevisionSchedule, ReviewRating, StudySession, Topic } from "../db/repositories/types";
+
+const RATING_SCALE: Record<ReviewRating, number> = { forgot: 1, hard: 2, good: 3, easy: 4 };
+
+export type Trend = "up" | "flat" | "down";
+
+export function topicTrend(topicId: string, revisions: RevisionSchedule[]): Trend | null {
+  const completed = revisions
+    .filter((r) => r.topic_id === topicId && r.status === "completed" && r.rating && r.completed_at)
+    .sort((a, b) => (a.completed_at! < b.completed_at! ? -1 : 1));
+  if (completed.length < 3) return null;
+  const avg = (items: RevisionSchedule[]) => items.reduce((s, r) => s + RATING_SCALE[r.rating!], 0) / items.length;
+  const recent = completed.slice(-2);
+  const prior = completed.slice(Math.max(0, completed.length - 4), completed.length - 2);
+  if (prior.length === 0) return null;
+  const delta = avg(recent) - avg(prior);
+  if (delta >= 0.5) return "up";
+  if (delta <= -0.5) return "down";
+  return "flat";
+}
+
+export function topicHasLateRevision(topicId: string, revisions: RevisionSchedule[], now = new Date()) {
+  return revisions.some((r) => {
+    if (r.topic_id !== topicId || r.status !== "pending") return false;
+    const due = parseISO(r.due_at);
+    return due < startOfDay(now);
+  });
+}
+
+export function currentFocusStreak(sessions: StudySession[], now = new Date()): number {
+  const today = startOfDay(now);
+  const days = new Set(sessions.filter((s) => s.focus_minutes * s.pomodoros_completed > 0).map((s) => format(parseISO(s.started_at), "yyyy-MM-dd")));
+  // Allow today's absence — count from yesterday backward if today is empty.
+  let cursor = days.has(format(today, "yyyy-MM-dd")) ? today : subDays(today, 1);
+  let streak = 0;
+  while (days.has(format(cursor, "yyyy-MM-dd"))) {
+    streak += 1;
+    cursor = subDays(cursor, 1);
+  }
+  return streak;
+}
+
+export type HeatmapCell = { date: Date; minutes: number; bucket: 0 | 1 | 2 | 3 | 4 };
+
+export function focusHeatmap(sessions: StudySession[], weeks = 12, now = new Date()): HeatmapCell[][] {
+  const end = endOfWeek(now, { weekStartsOn: 1 });
+  const start = startOfWeek(subWeeks(now, weeks - 1), { weekStartsOn: 1 });
+  const totals = new Map<string, number>();
+  sessions.forEach((s) => {
+    const key = format(parseISO(s.started_at), "yyyy-MM-dd");
+    totals.set(key, (totals.get(key) ?? 0) + s.focus_minutes * s.pomodoros_completed);
+  });
+  const allDays = eachDayOfInterval({ start, end });
+  const cols: HeatmapCell[][] = [];
+  for (let i = 0; i < allDays.length; i += 7) {
+    cols.push(allDays.slice(i, i + 7).map((day) => {
+      const minutes = totals.get(format(day, "yyyy-MM-dd")) ?? 0;
+      const bucket: HeatmapCell["bucket"] = minutes === 0 ? 0 : minutes <= 15 ? 1 : minutes <= 45 ? 2 : minutes <= 90 ? 3 : 4;
+      return { date: day, minutes, bucket };
+    }));
+  }
+  return cols;
+}
 
 export function dailyStudySeries(sessions: StudySession[], days = 14) {
   const end = startOfDay(new Date());
