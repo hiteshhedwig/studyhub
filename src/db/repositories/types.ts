@@ -63,6 +63,7 @@ export type Question = {
   review_count: number;
   mastery_score: number;
   created_at: string;
+  bookmarked?: number;
 };
 export type RevisionSchedule = {
   id: string;
@@ -77,3 +78,12 @@ export type RevisionSchedule = {
   created_at: string;
 };
 export type ResourceLink = { id: string; topic_id: string; session_id: string | null; title: string; url: string; kind: "chatgpt" | "article" | "video" | "docs" | "other"; created_at: string };
+export type ReviewAttempt = {
+  id: string;
+  question_id: string;
+  reviewed_at: string;
+  rating: ReviewRating;
+  user_answer: string | null;
+  was_correct: number;
+  time_spent_seconds: number;
+};

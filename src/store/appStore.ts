@@ -14,11 +14,15 @@ import {
   endSession,
   importQuestionSet,
   importQuestionSetForTopic,
+  getTopicAttempts,
   loadDashboardData,
   previewQuestionSetText,
   recordReview,
+  addQuestion,
   startSession,
+  toggleBookmark,
   updateCheatsheetTitle,
+  updateQuestion,
   updateQuestionSetText,
   updateSessionNotes,
   updateTopic,
@@ -53,6 +57,10 @@ type AppState = DashboardData & {
   updateCheatsheetTitle: typeof updateCheatsheetTitle;
   updateQuestionSetText: typeof updateQuestionSetText;
   previewQuestionSetText: typeof previewQuestionSetText;
+  getTopicAttempts: typeof getTopicAttempts;
+  toggleBookmark: typeof toggleBookmark;
+  addQuestion: typeof addQuestion;
+  updateQuestion: typeof updateQuestion;
   importQuestionSetForTopic: typeof importQuestionSetForTopic;
   deleteSession: typeof deleteSession;
   deleteTopic: typeof deleteTopic;
@@ -118,6 +126,10 @@ export const useAppStore = create<AppState>((set) => ({
   updateCheatsheetTitle: wrap(set, updateCheatsheetTitle),
   updateQuestionSetText: wrap(set, updateQuestionSetText),
   previewQuestionSetText,
+  getTopicAttempts,
+  toggleBookmark: wrap(set, toggleBookmark),
+  addQuestion: wrap(set, addQuestion),
+  updateQuestion: wrap(set, updateQuestion),
   importQuestionSetForTopic: wrap(set, importQuestionSetForTopic),
   deleteSession: wrap(set, deleteSession),
   deleteTopic: wrap(set, deleteTopic),

@@ -1,13 +1,16 @@
+import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronLeft, ExternalLink, FileText, Minus, MessageSquare, Trash2, Video } from "lucide-react";
 import { topicHasLateRevision, topicTrend, type Trend } from "../../services/statsService";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { QuestionScoreHeatmap } from "../../components/charts/QuestionScoreHeatmap";
 import { useAppStore } from "../../store/appStore";
 import { confirmDialog, toast } from "../../store/uiStore";
 import { openLocalPath } from "../../services/fileStorage";
 import { RevisionHistoryTimeline, summarizeRevisions } from "../../components/ui/RevisionHistoryTimeline";
+import type { ReviewAttempt } from "../../db/repositories/types";
 
 function formatMinutes(total: number) {
   if (total < 60) return `${total}m`;
@@ -105,6 +108,23 @@ export function TopicsPage() {
 export function TopicDetailPage() {
   const { topicId } = useParams();
   const { topics, sessions, cheatsheets, questionSets, questions, revisions, links } = useAppStore();
+  const getTopicAttempts = useAppStore((state) => state.getTopicAttempts);
+  const [attempts, setAttempts] = useState<ReviewAttempt[]>([]);
+
+  useEffect(() => {
+    if (!topicId) {
+      setAttempts([]);
+      return;
+    }
+    let alive = true;
+    void getTopicAttempts(topicId).then((rows) => {
+      if (alive) setAttempts(rows);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [topicId, getTopicAttempts, questions]);
+
   const topic = topics.find((item) => item.id === topicId);
 
   if (!topic) return (
@@ -262,6 +282,13 @@ export function TopicDetailPage() {
               })}
             </div>
           ) : <EmptyState>No links yet.</EmptyState>}
+        </div>
+      </section>
+      <section style={{ marginTop: 20 }}>
+        <div className="card grid">
+          <h2>Performance</h2>
+          <p className="muted" style={{ margin: 0 }}>Each cell is one practice attempt, oldest → newest, colored by how you rated recall. Click a cell to see that attempt.</p>
+          <QuestionScoreHeatmap key={topic.id} questions={topicQuestions} attempts={attempts} />
         </div>
       </section>
     </>

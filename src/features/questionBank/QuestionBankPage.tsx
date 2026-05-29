@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
-import { Import, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Import, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RichText } from "../../components/ui/RichText";
 import { DiffView } from "../../components/ui/DiffView";
+import { QuestionEditor, type EditorState } from "./QuestionEditor";
 import { useAppStore } from "../../store/appStore";
 import { parseQuestionImport, type QuestionImport } from "../../services/importQuestions";
 import type { QuestionSetTextDiff } from "../../db/repositories/studyRepository";
@@ -14,6 +15,8 @@ type UpdatePreview = { setId: string; title: string; data: QuestionImport; diff:
 
 type Tab = "questions" | "sets";
 
+const QUESTIONS_PAGE = 20;
+
 export function QuestionBankPage() {
   const store = useAppStore();
   const [tab, setTab] = useState<Tab>("questions");
@@ -23,6 +26,17 @@ export function QuestionBankPage() {
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<UpdatePreview | null>(null);
   const [applying, setApplying] = useState(false);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [visibleCount, setVisibleCount] = useState(QUESTIONS_PAGE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  function openNewQuestion() {
+    if (store.questionSets.length === 0) {
+      toast.info("Import a question set first, then you can add questions to it.");
+      return;
+    }
+    setEditor({ mode: "add" });
+  }
   const tags = [...new Set(store.questions.flatMap((question) => JSON.parse(question.tags_json) as string[]))].sort();
   const filtered = useMemo(
     () =>
@@ -33,6 +47,27 @@ export function QuestionBankPage() {
       }),
     [store.questions, search, difficulty, tag]
   );
+
+  // Render the list incrementally — 180+ Markdown/KaTeX rows are slow to mount all at once.
+  // Reset to one page whenever the filter set changes, then grow as the sentinel scrolls into view.
+  useEffect(() => {
+    setVisibleCount(QUESTIONS_PAGE);
+  }, [search, difficulty, tag, tab]);
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((count) => Math.min(count + QUESTIONS_PAGE, filtered.length));
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filtered.length, tab, visibleCount]);
 
   async function importJson() {
     const path = await pickLocalFile(["json"]);
@@ -118,7 +153,12 @@ export function QuestionBankPage() {
       <PageHeader
         title="Question Bank"
         eyebrow="ChatGPT-generated Q&A, validated before it enters your local database."
-        actions={<button className="btn primary" onClick={importJson}><Import size={17} />Import JSON</button>}
+        actions={
+          <div className="button-row">
+            <button className="btn" onClick={openNewQuestion}><Plus size={17} />New question</button>
+            <button className="btn primary" onClick={importJson}><Import size={17} />Import JSON</button>
+          </div>
+        }
       />
       <div className="card button-row" style={{ gap: 8 }}>
         <button className={`btn ${tab === "questions" ? "primary" : ""}`} type="button" onClick={() => setTab("questions")}>Questions ({store.questions.length})</button>
@@ -146,12 +186,15 @@ export function QuestionBankPage() {
             </div>
           </div>
           <section className="list" style={{ marginTop: 20 }}>
-            {filtered.length ? filtered.map((question) => {
+            {filtered.length ? filtered.slice(0, visibleCount).map((question) => {
               const isOpen = revealed.has(question.id);
               return (
                 <article className="card" key={question.id}>
                   <div className="qa-row">
-                    <span className="pill">{question.topic_title} · {question.difficulty}</span>
+                    <div className="split">
+                      <span className="pill">{question.topic_title} · {question.difficulty}</span>
+                      <button type="button" className="btn small" onClick={() => setEditor({ mode: "edit", question })}><Pencil size={14} />Edit</button>
+                    </div>
                     <RichText className="prompt">{question.question}</RichText>
                     <button type="button" className="qa-toggle" onClick={() => toggleRevealed(question.id)}>
                       {isOpen ? "Hide answer" : "Show answer"}
@@ -163,6 +206,11 @@ export function QuestionBankPage() {
               );
             }) : <EmptyState>No questions match this filter.</EmptyState>}
           </section>
+          {filtered.length > visibleCount ? (
+            <div ref={sentinelRef} className="muted" style={{ textAlign: "center", padding: "var(--space-4)", fontSize: "var(--text-xs)" }}>
+              Showing {visibleCount} of {filtered.length} · scroll for more
+            </div>
+          ) : null}
         </>
       ) : (
         <section className="list" style={{ marginTop: 20 }}>
@@ -230,6 +278,8 @@ export function QuestionBankPage() {
           </div>
         </div>
       ) : null}
+
+      {editor ? <QuestionEditor state={editor} sets={store.questionSets} onClose={() => setEditor(null)} /> : null}
     </>
   );
 }

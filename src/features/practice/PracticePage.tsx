@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isPast, isToday, parseISO } from "date-fns";
-import { Sparkles } from "lucide-react";
+import { Bookmark, BookmarkCheck, Sparkles } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RatingButtons } from "../../components/ui/RatingButtons";
@@ -9,15 +9,17 @@ import { AiEvalCard } from "../../components/ui/AiEvalCard";
 import { getPracticeShortcutsEnabled, getAiEvalConfig } from "../../services/preferencesService";
 import { evaluateAnswer, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
 import { useAppStore } from "../../store/appStore";
+import { toast } from "../../store/uiStore";
 
-type Mode = "due" | "topic" | "weak" | "random";
+type Mode = "due" | "topic" | "weak" | "random" | "bookmarked";
 type TopicOrder = "original" | "shuffled";
 
 const MODE_LABELS: Record<Mode, string> = {
   due: "Due",
   topic: "Topic",
   weak: "Weak",
-  random: "Random"
+  random: "Random",
+  bookmarked: "Bookmarked"
 };
 
 function shuffleWithSeed<T>(items: T[], seed: number): T[] {
@@ -70,6 +72,9 @@ export function PracticePage() {
     if (mode === "weak") {
       return store.questions.filter((question) => question.mastery_score < 45 || question.difficulty === "hard");
     }
+    if (mode === "bookmarked") {
+      return store.questions.filter((question) => question.bookmarked);
+    }
     return shuffleWithSeed(store.questions, shuffleSeed);
   }, [store.questions, mode, topicId, topicOrder, shuffleSeed]);
 
@@ -92,6 +97,12 @@ export function PracticePage() {
     setEvalState({ status: "loading" });
     const result = await evaluateAnswer({ question: current.question, canonical: current.answer, userAnswer: answer });
     setEvalState(result.ok ? { status: "done", result: result.data } : { status: "error", error: result.error });
+  }
+
+  async function toggleBookmark() {
+    if (!current) return;
+    const nowBookmarked = await store.toggleBookmark(current.id);
+    toast.success(nowBookmarked ? "Bookmarked" : "Removed bookmark");
   }
 
   async function rate(rating: "forgot" | "hard" | "good" | "easy") {
@@ -199,7 +210,19 @@ export function PracticePage() {
           <div className="grid">
             <div className="split">
               <span className="pill">{current.topic_title} · {current.difficulty}</span>
-              <span className="muted">{(index % pool.length) + 1} / {pool.length}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                <button
+                  type="button"
+                  className={`btn small ${current.bookmarked ? "primary" : ""}`}
+                  onClick={() => void toggleBookmark()}
+                  aria-pressed={Boolean(current.bookmarked)}
+                  title={current.bookmarked ? "Remove bookmark" : "Bookmark this question"}
+                >
+                  {current.bookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                  {current.bookmarked ? "Bookmarked" : "Bookmark"}
+                </button>
+                <span className="muted">{(index % pool.length) + 1} / {pool.length}</span>
+              </span>
             </div>
             <RichText className="prompt">{current.question}</RichText>
             <label className="field">

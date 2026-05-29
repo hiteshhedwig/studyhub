@@ -2,7 +2,7 @@ import type { Database } from "sql.js";
 import { addDays } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
 import { calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
-import type { Category, Cheatsheet, Difficulty, Question, QuestionSet, ResourceLink, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
+import type { Category, Cheatsheet, Difficulty, Question, QuestionSet, ResourceLink, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
 import type { QuestionImport } from "../../services/importQuestions";
 
 const id = () => crypto.randomUUID();
@@ -55,8 +55,11 @@ export async function loadDashboardData(): Promise<DashboardData> {
     ),
     questions: toRows<Question>(
       db,
-      `SELECT Question.*, Topic.title AS topic_title
-       FROM Question JOIN Topic ON Topic.id = Question.topic_id
+      `SELECT Question.*, Topic.title AS topic_title,
+              CASE WHEN Bookmark.question_id IS NOT NULL THEN 1 ELSE 0 END AS bookmarked
+       FROM Question
+       JOIN Topic ON Topic.id = Question.topic_id
+       LEFT JOIN Bookmark ON Bookmark.question_id = Question.id
        ORDER BY next_due_at ASC`
     ),
     revisions: toRows<RevisionSchedule>(
@@ -372,6 +375,20 @@ export async function previewQuestionSetText(setId: string, data: QuestionImport
   });
 }
 
+/** All practice attempts for a topic's questions, oldest first. Read-only; lazy-loaded by the topic detail page. */
+export async function getTopicAttempts(topicId: string): Promise<ReviewAttempt[]> {
+  return withDb((db) =>
+    toRows<ReviewAttempt>(
+      db,
+      `SELECT ReviewAttempt.*
+       FROM ReviewAttempt JOIN Question ON Question.id = ReviewAttempt.question_id
+       WHERE Question.topic_id = ?
+       ORDER BY ReviewAttempt.reviewed_at ASC`,
+      [topicId]
+    )
+  );
+}
+
 export async function recordReview(input: { question: Question; rating: ReviewRating; userAnswer: string; seconds: number }) {
   return withDb((db) => {
     const result = calculateQuestionReview({
@@ -414,12 +431,68 @@ export async function completeRevision(revisionId: string, rating: ReviewRating)
   }, true);
 }
 
+/** Toggle a question's bookmark. Returns the new state (true = now bookmarked). */
+export async function toggleBookmark(questionId: string): Promise<boolean> {
+  return withDb((db) => {
+    const existing = one<{ question_id: string }>(db, "SELECT question_id FROM Bookmark WHERE question_id = ?", [questionId]);
+    if (existing) {
+      db.run("DELETE FROM Bookmark WHERE question_id = ?", [questionId]);
+      return false;
+    }
+    db.run("INSERT INTO Bookmark VALUES (?, ?)", [questionId, now()]);
+    return true;
+  }, true);
+}
+
+export type QuestionFields = { question: string; answer: string; difficulty: Difficulty; tags: string[] };
+
+/** Add a single question to an existing set (topic is inherited from the set). New questions are immediately due. */
+export async function addQuestion(setId: string, fields: QuestionFields): Promise<string> {
+  return withDb((db) => {
+    const set = one<QuestionSet>(db, "SELECT * FROM QuestionSet WHERE id = ?", [setId]);
+    if (!set) throw new Error("Choose a set for the question.");
+    const questionId = id();
+    db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+      questionId,
+      setId,
+      set.topic_id,
+      fields.question,
+      fields.answer,
+      fields.difficulty,
+      JSON.stringify(fields.tags),
+      now(),
+      null,
+      0,
+      0,
+      now()
+    ]);
+    return questionId;
+  }, true);
+}
+
+/** Edit a question's text/difficulty/tags in place — review history (id, attempts, mastery) is preserved. */
+export async function updateQuestion(questionId: string, fields: QuestionFields) {
+  return withDb((db) => {
+    db.run("UPDATE Question SET question = ?, answer = ?, difficulty = ?, tags_json = ? WHERE id = ?", [
+      fields.question,
+      fields.answer,
+      fields.difficulty,
+      JSON.stringify(fields.tags),
+      questionId
+    ]);
+  }, true);
+}
+
 export async function deleteQuestion(questionId: string) {
-  return withDb((db) => db.run("DELETE FROM Question WHERE id = ?", [questionId]), true);
+  return withDb((db) => {
+    db.run("DELETE FROM Bookmark WHERE question_id = ?", [questionId]);
+    db.run("DELETE FROM Question WHERE id = ?", [questionId]);
+  }, true);
 }
 
 export async function deleteQuestionSet(questionSetId: string) {
   return withDb((db) => {
+    db.run("DELETE FROM Bookmark WHERE question_id IN (SELECT id FROM Question WHERE question_set_id = ?)", [questionSetId]);
     db.run("DELETE FROM ReviewAttempt WHERE question_id IN (SELECT id FROM Question WHERE question_set_id = ?)", [questionSetId]);
     db.run("DELETE FROM Question WHERE question_set_id = ?", [questionSetId]);
     db.run("DELETE FROM QuestionSet WHERE id = ?", [questionSetId]);
@@ -439,6 +512,7 @@ export async function deleteSession(sessionId: string) {
 
 export async function deleteTopic(topicId: string) {
   return withDb((db) => {
+    db.run("DELETE FROM Bookmark WHERE question_id IN (SELECT id FROM Question WHERE topic_id = ?)", [topicId]);
     db.run("DELETE FROM ReviewAttempt WHERE question_id IN (SELECT id FROM Question WHERE topic_id = ?)", [topicId]);
     db.run("DELETE FROM Question WHERE topic_id = ?", [topicId]);
     db.run("DELETE FROM QuestionSet WHERE topic_id = ?", [topicId]);

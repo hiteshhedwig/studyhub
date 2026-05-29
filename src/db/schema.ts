@@ -103,6 +103,12 @@ CREATE TABLE IF NOT EXISTS ReviewAttempt (
   FOREIGN KEY(question_id) REFERENCES Question(id)
 );
 
+CREATE TABLE IF NOT EXISTS Bookmark (
+  question_id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(question_id) REFERENCES Question(id)
+);
+
 CREATE TABLE IF NOT EXISTS RevisionSchedule (
   id TEXT PRIMARY KEY,
   topic_id TEXT NOT NULL,
