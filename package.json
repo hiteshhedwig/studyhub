@@ -1,11 +1,12 @@
 {
   "name": "study-hub",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
+    "build:web": "tsc && vite build --config vite.config.web.ts && node scripts/rename-web-entry.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "tauri": "tauri"

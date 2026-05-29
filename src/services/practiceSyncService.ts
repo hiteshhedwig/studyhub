@@ -7,12 +7,31 @@ const QUESTIONS_TYPE = "studyhub-questions";
 const PRACTICE_TYPE = "studyhub-practice";
 const VERSION = 1;
 
-export type QuestionsFile = { type: typeof QUESTIONS_TYPE; version: number; exported_at: string; questions: ExportedQuestion[] };
+export type QuestionsFile = { type: typeof QUESTIONS_TYPE; version: number; exported_at: string; exam_date: string | null; questions: ExportedQuestion[] };
 export type PracticeFile = { type: typeof PRACTICE_TYPE; version: number; exported_at: string; attempts: ReviewAttempt[] };
 
-export function buildQuestionsFile(questions: ExportedQuestion[]): string {
-  const file: QuestionsFile = { type: QUESTIONS_TYPE, version: VERSION, exported_at: new Date().toISOString(), questions };
+export function buildQuestionsFile(questions: ExportedQuestion[], examDate: string | null): string {
+  const file: QuestionsFile = { type: QUESTIONS_TYPE, version: VERSION, exported_at: new Date().toISOString(), exam_date: examDate, questions };
   return JSON.stringify(file, null, 2);
+}
+
+export function buildPracticeFile(attempts: ReviewAttempt[]): string {
+  const file: PracticeFile = { type: PRACTICE_TYPE, version: VERSION, exported_at: new Date().toISOString(), attempts };
+  return JSON.stringify(file, null, 2);
+}
+
+export function parseQuestionsFile(text: string): { ok: true; questions: ExportedQuestion[]; examDate: string | null } | { ok: false; error: string } {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return { ok: false, error: "That file isn't valid JSON." };
+  }
+  const file = data as Partial<QuestionsFile>;
+  if (file?.type !== QUESTIONS_TYPE || !Array.isArray(file.questions)) {
+    return { ok: false, error: "Not a Study Hub questions file (export it from the desktop app's Settings)." };
+  }
+  return { ok: true, questions: file.questions as ExportedQuestion[], examDate: (file.exam_date as string | null | undefined) ?? null };
 }
 
 export function parsePracticeFile(text: string): { ok: true; attempts: ReviewAttempt[] } | { ok: false; error: string } {

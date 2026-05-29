@@ -1,0 +1,76 @@
+/* Mobile-first layout for the standalone practice web app. Reuses the design
+   tokens + component classes from globals.css (.card, .btn, .rich-text, .pill, etc.). */
+
+.pw-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pw-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.pw-header h1 { margin: 0; font-size: 1.05rem; }
+
+.pw-main {
+  flex: 1;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+.pw-modes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.pw-card { display: grid; gap: 16px; }
+
+/* iOS zooms inputs with font-size < 16px on focus — keep them at 16px. */
+.pw-shell .textarea,
+.pw-shell .input { font-size: 16px; }
+.pw-shell .textarea { min-height: 96px; }
+
+/* Bigger, thumb-friendly rating targets; 2×2 on narrow screens. */
+.pw-shell .rating-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.pw-shell .rating-row .btn { min-height: 48px; }
+
+.pw-import {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 24px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.pw-import h1 { margin: 0; font-size: 1.4rem; }
+.pw-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  color: var(--accent-contrast);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 90%, #fff), var(--accent));
+}
+
+.pw-empty { display: grid; gap: 12px; justify-items: start; }
+
+@media (min-width: 600px) {
+  .pw-shell .rating-row { grid-template-columns: repeat(4, 1fr); }
+}

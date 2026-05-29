@@ -95,7 +95,8 @@ export function SettingsPage() {
     setSyncBusy(true);
     try {
       const questions = await exportPracticeQuestions();
-      const saved = await saveTextFile(practiceFileName("studyhub-questions"), buildQuestionsFile(questions));
+      const examDate = exam.enabled && exam.date ? exam.date : null;
+      const saved = await saveTextFile(practiceFileName("studyhub-questions"), buildQuestionsFile(questions, examDate));
       if (saved) toast.success(`Exported ${questions.length} questions for the phone app.`);
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not export questions.");

@@ -1,0 +1,15 @@
+# Netlify config for the standalone mobile practice web app.
+# Connect this repo in Netlify and it picks these up automatically.
+[build]
+  command = "npm run build:web"
+  publish = "dist-web"
+
+[build.environment]
+  # Vite 7 needs Node 20.19+ / 22.12+.
+  NODE_VERSION = "22"
+
+# SPA fallback (harmless for the single-page practice app).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

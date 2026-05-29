@@ -6,6 +6,7 @@ target/
 # JS build/deps
 node_modules/
 dist/
+dist-web/
 build/
 .next/
 
