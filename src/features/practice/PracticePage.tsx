@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isPast, isToday, parseISO } from "date-fns";
+import { Sparkles } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RatingButtons } from "../../components/ui/RatingButtons";
 import { RichText } from "../../components/ui/RichText";
+import { AiEvalCard } from "../../components/ui/AiEvalCard";
+import { getPracticeShortcutsEnabled, getAiEvalConfig } from "../../services/preferencesService";
+import { evaluateAnswer, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
 import { useAppStore } from "../../store/appStore";
 
 type Mode = "due" | "topic" | "weak" | "random";
@@ -44,7 +48,11 @@ export function PracticePage() {
   const [revealed, setRevealed] = useState(false);
   const [answer, setAnswer] = useState("");
   const [startedAt, setStartedAt] = useState(Date.now());
+  const [shortcutsEnabled] = useState(() => getPracticeShortcutsEnabled());
+  const [aiConfig] = useState(() => getAiEvalConfig());
+  const [evalState, setEvalState] = useState<{ status: "idle" | "loading" | "done" | "error"; result?: EvaluationResult; error?: string }>({ status: "idle" });
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
+  const aiAvailable = aiConfig.enabled && Boolean(aiConfig.apiKey);
 
   const pool = useMemo(() => {
     if (mode === "due") {
@@ -75,7 +83,16 @@ export function PracticePage() {
     setRevealed(false);
     setAnswer("");
     setStartedAt(Date.now());
+    setEvalState({ status: "idle" });
   }, [currentId]);
+
+  async function runEvaluation() {
+    if (!current) return;
+    setRevealed(true);
+    setEvalState({ status: "loading" });
+    const result = await evaluateAnswer({ question: current.question, canonical: current.answer, userAnswer: answer });
+    setEvalState(result.ok ? { status: "done", result: result.data } : { status: "error", error: result.error });
+  }
 
   async function rate(rating: "forgot" | "hard" | "good" | "easy") {
     if (!current) return;
@@ -88,8 +105,9 @@ export function PracticePage() {
     setIndex((value) => value + 1);
   }
 
-  // Keyboard shortcuts: Space reveals, →/N skips, 1-4 rate, ?/H shows help.
+  // Keyboard shortcuts: Space reveals, →/N skips, 1-4 rate. Can be turned off in Settings.
   useEffect(() => {
+    if (!shortcutsEnabled) return;
     function isTypingInField(target: EventTarget | null): boolean {
       if (!(target instanceof HTMLElement)) return false;
       const tag = target.tagName.toLowerCase();
@@ -125,7 +143,7 @@ export function PracticePage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, revealed]);
+  }, [current?.id, revealed, shortcutsEnabled]);
 
   return (
     <>
@@ -173,7 +191,7 @@ export function PracticePage() {
           </>
         ) : null}
         <span className="muted" style={{ marginLeft: "auto", fontSize: "var(--text-xs)" }}>
-          Space: reveal · → / N: next · 1-4: rate · ?: all shortcuts
+          {shortcutsEnabled ? "Space: reveal · → / N: next · 1-4: rate · ?: all shortcuts" : "Practice shortcuts off — enable in Settings"}
         </span>
       </div>
       <section className="card raised" style={{ marginTop: 20 }}>
@@ -191,12 +209,28 @@ export function PracticePage() {
             {!revealed ? (
               <div className="button-row">
                 <button className="btn primary" type="button" onClick={() => setRevealed(true)}>Reveal answer</button>
+                {aiAvailable ? (
+                  <button className="btn" type="button" onClick={() => void runEvaluation()}><Sparkles size={16} />AI Evaluation</button>
+                ) : null}
                 <button className="btn" type="button" onClick={skipForward}>Skip</button>
               </div>
             ) : (
               <>
                 <div className="card"><h3>Answer</h3><RichText>{current.answer}</RichText></div>
-                <RatingButtons onRate={rate} />
+                {aiAvailable && evalState.status === "idle" ? (
+                  <button className="btn" type="button" onClick={() => void runEvaluation()} style={{ justifySelf: "start" }}><Sparkles size={16} />Evaluate with AI</button>
+                ) : null}
+                {evalState.status === "loading" ? (
+                  <div className="ai-eval-status"><span className="ai-spinner" aria-hidden="true" /> Evaluating your answer…</div>
+                ) : null}
+                {evalState.status === "error" ? (
+                  <div className="ai-eval-status error">
+                    <span>AI evaluation failed: {evalState.error}</span>
+                    <button className="btn small" type="button" onClick={() => void runEvaluation()}>Retry</button>
+                  </div>
+                ) : null}
+                {evalState.status === "done" && evalState.result ? <AiEvalCard result={evalState.result} /> : null}
+                <RatingButtons onRate={rate} suggested={evalState.status === "done" && evalState.result ? recallGradeToRating(evalState.result.recall_grade) : undefined} />
               </>
             )}
           </div>

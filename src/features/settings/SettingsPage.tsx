@@ -5,7 +5,7 @@ import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { closeMiniOverlay, openMiniOverlay } from "../../services/overlayWindowService";
 import { exportDatabaseToFile, importDatabaseFromFile } from "../../services/backupService";
 import { SOUND_VOLUME_MAX, getVolume, previewBell, setVolume, unlockAudio } from "../../services/soundService";
-import { POMODORO_PRESETS, getDefaultPomodoroId, setDefaultPomodoro, type PomodoroPresetId } from "../../services/preferencesService";
+import { POMODORO_PRESETS, getDefaultPomodoroId, setDefaultPomodoro, getPracticeShortcutsEnabled, setPracticeShortcutsEnabled, getAiEvalConfig, setAiEvalEnabled, setAiApiKey, setAiModel, DEFAULT_AI_MODEL, type PomodoroPresetId } from "../../services/preferencesService";
 import { confirmDialog, toast } from "../../store/uiStore";
 
 export function SettingsPage() {
@@ -14,6 +14,8 @@ export function SettingsPage() {
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [volume, setVolumeState] = useState(() => getVolume());
   const [pomodoroPreset, setPomodoroPreset] = useState<PomodoroPresetId>(() => getDefaultPomodoroId());
+  const [practiceShortcuts, setPracticeShortcuts] = useState(() => getPracticeShortcutsEnabled());
+  const [ai, setAi] = useState(() => getAiEvalConfig());
 
   function handleVolumeChange(next: number) {
     setVolumeState(next);
@@ -29,6 +31,28 @@ export function SettingsPage() {
     setPomodoroPreset(id);
     setDefaultPomodoro(id);
     toast.info(`Default Pomodoro set to ${POMODORO_PRESETS.find((p) => p.id === id)?.label ?? id}.`);
+  }
+
+  function handlePracticeShortcutsChange(enabled: boolean) {
+    setPracticeShortcuts(enabled);
+    setPracticeShortcutsEnabled(enabled);
+    toast.info(enabled ? "Practice keyboard shortcuts enabled." : "Practice keyboard shortcuts disabled.");
+  }
+
+  function handleAiEnabledChange(enabled: boolean) {
+    setAi((prev) => ({ ...prev, enabled }));
+    setAiEvalEnabled(enabled);
+    if (enabled && !ai.apiKey) toast.info("Add your OpenRouter API key below to start evaluating.");
+  }
+
+  function handleAiKeyChange(key: string) {
+    setAi((prev) => ({ ...prev, apiKey: key }));
+    setAiApiKey(key);
+  }
+
+  function handleAiModelChange(model: string) {
+    setAi((prev) => ({ ...prev, model }));
+    setAiModel(model);
   }
 
   async function handleExport() {
@@ -98,6 +122,41 @@ export function SettingsPage() {
               {POMODORO_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
             </select>
           </label>
+        </div>
+
+        <div className="card grid">
+          <h2>Practice</h2>
+          <p className="muted">Keyboard shortcuts during practice: Space reveals then advances, → or N skips, and 1–4 rate the card.</p>
+          <label className="toggle">
+            <input type="checkbox" checked={practiceShortcuts} onChange={(event) => handlePracticeShortcutsChange(event.target.checked)} />
+            <span>Enable practice keyboard shortcuts</span>
+          </label>
+        </div>
+
+        <div className="card grid">
+          <h2>AI evaluation</h2>
+          <p className="muted">
+            Optional. When enabled, the <strong>AI Evaluation</strong> button in Practice sends your typed answer and the
+            question's canonical answer to OpenRouter to grade your recall. This is the only feature that makes a network
+            call — it stays off until you enable it and add a key.
+          </p>
+          <label className="toggle">
+            <input type="checkbox" checked={ai.enabled} onChange={(event) => handleAiEnabledChange(event.target.checked)} />
+            <span>Enable AI evaluation in Practice</span>
+          </label>
+          <label className="field">
+            <span>OpenRouter API key</span>
+            <input className="input" type="password" autoComplete="off" placeholder="sk-or-…" value={ai.apiKey} onChange={(event) => handleAiKeyChange(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>Model</span>
+            <input className="input" placeholder={DEFAULT_AI_MODEL} value={ai.model} onChange={(event) => handleAiModelChange(event.target.value)} />
+          </label>
+          <p className="muted" style={{ fontSize: "var(--text-xs)" }}>
+            Use a model that supports structured output — OpenRouter <code>:free</code> tiers do not, so grading will fail.
+            Good picks: <code>google/gemini-2.0-flash-001</code>, <code>openai/gpt-4o-mini</code>. Create a key at openrouter.ai/keys;
+            it's stored locally in plain text on this device.
+          </p>
         </div>
 
         <div className="card grid">
