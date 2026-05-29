@@ -2,16 +2,14 @@ import { useMemo, useState } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { StudyTimeChart } from "../../components/charts/StudyTimeChart";
-import { FocusHeatmap } from "../../components/charts/FocusHeatmap";
 import { RevisionHistoryTimeline, summarizeRevisions } from "../../components/ui/RevisionHistoryTimeline";
 import { useAppStore } from "../../store/appStore";
-import { dailyStudySeries, focusHeatmap, rankedTopics, recallAccuracy, revisionCompletionRate } from "../../services/statsService";
+import { dailyStudySeries, rankedTopics, recallAccuracy, revisionCompletionRate } from "../../services/statsService";
 import type { RevisionSchedule } from "../../db/repositories/types";
 
 export function StatsPage() {
   const { sessions, revisions, questions, topics } = useAppStore();
   const series = dailyStudySeries(sessions, 14);
-  const heatmap = useMemo(() => focusHeatmap(sessions, 12), [sessions]);
   const totalMinutes = sessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
   const pomodoros = sessions.reduce((sum, session) => sum + session.pomodoros_completed, 0);
   const answered = questions.reduce((sum, question) => sum + question.review_count, 0);
@@ -70,13 +68,6 @@ export function StatsPage() {
         <div className="card" style={{ minHeight: 320 }}>
           <h2>Daily study time</h2>
           {series.some((item) => item.minutes) ? <StudyTimeChart data={series} /> : <EmptyState>Charts will fill in after completed Pomodoros.</EmptyState>}
-        </div>
-      </section>
-
-      <section style={{ marginTop: 20 }}>
-        <div className="card grid">
-          <h2>Focus consistency · last 12 weeks</h2>
-          <FocusHeatmap data={heatmap} />
         </div>
       </section>
 

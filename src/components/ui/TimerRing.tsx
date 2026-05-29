@@ -1,3 +1,5 @@
+import { RollingTime } from "./RollingTime";
+
 type TimerRingProps = {
   /** progress 0-100 */
   progress: number;
@@ -29,7 +31,7 @@ export function TimerRing({ progress, time, label, state = "focus" }: TimerRingP
         />
       </svg>
       <div className="timer-ring-inner">
-        <span className="timer">{time}</span>
+        <span className="timer"><RollingTime time={time} /></span>
         <span className="timer-ring-label">{label}</span>
       </div>
     </div>

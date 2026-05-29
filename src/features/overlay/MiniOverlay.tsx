@@ -6,6 +6,7 @@ import { progressPercent } from "../../services/timerLogic";
 import { unlockAudio } from "../../services/soundService";
 import { useTimerSounds } from "../../hooks/useTimerSounds";
 import { MiniOverlayControls } from "./MiniOverlayControls";
+import { RollingTime } from "../../components/ui/RollingTime";
 import "./miniOverlay.css";
 
 function formatTime(seconds: number) {
@@ -173,7 +174,7 @@ export function MiniOverlay() {
               <span className="overlay-phase">{phaseLabel(timer.phase, timer.awaitingFinalChoice, timer.awaitingNextPhase)}</span>
               <span className="overlay-cycle-mini">{timer.totalCycles ? `${timer.currentCycle}/${timer.totalCycles}` : `Cycle ${timer.currentCycle}`}</span>
             </div>
-            <strong className="overlay-time">{formatTime(timer.remainingSeconds)}</strong>
+            <strong className="overlay-time"><RollingTime time={formatTime(timer.remainingSeconds)} /></strong>
           </div>
           <div className="overlay-progress" aria-label="Timer progress">
             <span style={{ width: `${progress}%` }} />
@@ -191,7 +192,7 @@ export function MiniOverlay() {
             </div>
           ) : (
             <div className="overlay-actions">
-              <button type="button" onClick={timer.toggleRunning}>{timer.isRunning ? "Pause" : "Resume"}</button>
+              <button type="button" className="overlay-primary" onClick={timer.toggleRunning}>{timer.isRunning ? "Pause" : "Resume"}</button>
               <button type="button" onClick={timer.skipPhase}>Skip</button>
             </div>
           )}

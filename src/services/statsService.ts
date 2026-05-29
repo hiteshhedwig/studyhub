@@ -43,9 +43,10 @@ export function currentFocusStreak(sessions: StudySession[], now = new Date()): 
 
 export type HeatmapCell = { date: Date; minutes: number; bucket: 0 | 1 | 2 | 3 | 4 };
 
-export function focusHeatmap(sessions: StudySession[], weeks = 12, now = new Date()): HeatmapCell[][] {
-  const end = endOfWeek(now, { weekStartsOn: 1 });
-  const start = startOfWeek(subWeeks(now, weeks - 1), { weekStartsOn: 1 });
+export function focusHeatmap(sessions: StudySession[], weeks = 53, now = new Date()): HeatmapCell[][] {
+  // Weeks run Sunday→Saturday to match GitHub's contribution graph.
+  const end = endOfWeek(now, { weekStartsOn: 0 });
+  const start = startOfWeek(subWeeks(now, weeks - 1), { weekStartsOn: 0 });
   const totals = new Map<string, number>();
   sessions.forEach((s) => {
     const key = format(parseISO(s.started_at), "yyyy-MM-dd");

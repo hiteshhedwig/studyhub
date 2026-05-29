@@ -253,7 +253,9 @@ export async function importQuestionSet(data: QuestionImport, sessionId?: string
         question.answer,
         question.difficulty as Difficulty,
         JSON.stringify(question.tags),
-        addDays(new Date(), question.difficulty === "hard" ? 1 : question.difficulty === "medium" ? 3 : 7).toISOString(),
+        // New questions are immediately due so they show up to practice right
+        // away; spaced-repetition intervals only kick in after the first rating.
+        now(),
         null,
         0,
         0,
@@ -279,7 +281,9 @@ export async function importQuestionSetForTopic(data: QuestionImport, topicId: s
         question.answer,
         question.difficulty as Difficulty,
         JSON.stringify(question.tags),
-        addDays(new Date(), question.difficulty === "hard" ? 1 : question.difficulty === "medium" ? 3 : 7).toISOString(),
+        // New questions are immediately due so they show up to practice right
+        // away; spaced-repetition intervals only kick in after the first rating.
+        now(),
         null,
         0,
         0,

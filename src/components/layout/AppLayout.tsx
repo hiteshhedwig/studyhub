@@ -1,7 +1,9 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useLayoutEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { isPast, isToday, parseISO } from "date-fns";
 import { BarChart3, BookMarked, CalendarClock, CheckCircle2, ClipboardList, FolderInput, GraduationCap, Home, Library, MessageSquareText, Settings, TimerReset } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
+import { KeyboardShortcuts } from "../ui/KeyboardShortcuts";
 
 const navGroups = [
   {
@@ -40,6 +42,29 @@ export function AppLayout() {
   }).length;
   const badgeFor = (to: string): number | undefined => (to === "/revisions" && revisionAlertCount > 0 ? revisionAlertCount : undefined);
 
+  const navRef = useRef<HTMLElement>(null);
+  const location = useLocation();
+  const [indicator, setIndicator] = useState<{ top: number; height: number; left: number; width: number } | null>(null);
+
+  // Position the sliding highlight under the active nav link. Recompute on
+  // navigation and resize so it tracks the active item like a segmented control.
+  useLayoutEffect(() => {
+    function place() {
+      const nav = navRef.current;
+      const active = nav?.querySelector<HTMLElement>(".nav-link.active");
+      if (!nav || !active) {
+        setIndicator(null);
+        return;
+      }
+      const navRect = nav.getBoundingClientRect();
+      const rect = active.getBoundingClientRect();
+      setIndicator({ top: rect.top - navRect.top, height: rect.height, left: rect.left - navRect.left, width: rect.width });
+    }
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [location.pathname]);
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -52,7 +77,14 @@ export function AppLayout() {
             <span>Local-first learning desk</span>
           </span>
         </div>
-        <nav aria-label="Main navigation">
+        <nav aria-label="Main navigation" ref={navRef}>
+          <span
+            className="nav-indicator"
+            aria-hidden="true"
+            style={indicator
+              ? { top: indicator.top, height: indicator.height, left: indicator.left, width: indicator.width, opacity: 1 }
+              : { opacity: 0 }}
+          />
           {navGroups.map((group) => (
             <div key={group.label}>
               <p className="nav-section-label">{group.label}</p>
@@ -87,6 +119,7 @@ export function AppLayout() {
       <main className="main">
         <Outlet />
       </main>
+      <KeyboardShortcuts />
     </div>
   );
 }

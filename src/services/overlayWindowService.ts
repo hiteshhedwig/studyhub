@@ -2,8 +2,8 @@ import { LogicalSize, WebviewWindow } from "@tauri-apps/api/window";
 import { useSessionTimerStore } from "../store/sessionTimerStore";
 
 const OVERLAY_LABEL = "mini-overlay";
-const EXPANDED_SIZE = { width: 320, height: 190 };
-const COLLAPSED_SIZE = { width: 220, height: 72 };
+const EXPANDED_SIZE = { width: 328, height: 224 };
+const COLLAPSED_SIZE = { width: 224, height: 76 };
 
 export async function openMiniOverlay() {
   try {

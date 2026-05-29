@@ -20,9 +20,9 @@
 .mini-overlay.expanded {
   display: grid;
   grid-template-rows: auto 1fr auto auto;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 22px;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
 }
 
 .mini-overlay.collapsed {
@@ -103,6 +103,14 @@
   font-size: 0.78rem;
 }
 
+.overlay-topline > div > span {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
 .overlay-topline strong {
   font-size: 0.98rem;
   white-space: nowrap;
@@ -151,10 +159,29 @@
 .overlay-actions button,
 .overlay-final-actions button,
 .overlay-complete button {
-  height: 31px;
+  height: 36px;
   padding: 0 12px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 550;
+  border-radius: 11px;
   flex: 1;
+}
+
+.overlay-actions button:active,
+.overlay-final-actions button:active {
+  transform: scale(0.97);
+}
+
+.overlay-actions button.overlay-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-contrast);
+  font-weight: 650;
+}
+
+.overlay-actions button.overlay-primary:hover {
+  background: color-mix(in srgb, var(--accent) 86%, #fff);
+  border-color: transparent;
 }
 
 .overlay-main {
@@ -192,7 +219,7 @@
 }
 
 .overlay-progress {
-  height: 5px;
+  height: 6px;
   background: color-mix(in srgb, var(--surface-soft) 78%, var(--background));
   border-radius: 999px;
   overflow: hidden;
@@ -201,8 +228,15 @@
 .overlay-progress span {
   display: block;
   height: 100%;
+  border-radius: 999px;
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 78%, var(--success)), var(--accent));
-  transition: width 180ms ease;
+  transition: width 180ms ease, background 600ms var(--ease);
+}
+
+/* Break phase tints the progress fill green to match the ring. */
+.mini-overlay:has(.phase-dot.break) .overlay-progress span,
+.mini-overlay:has(.phase-dot.long_break) .overlay-progress span {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--success) 82%, var(--accent)), var(--success));
 }
 
 .phase-dot {

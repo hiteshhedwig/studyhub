@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { format, isPast, isToday, parseISO } from "date-fns";
 import { ChevronRight, Flame, Layers2, Paperclip, Play, Square } from "lucide-react";
-import { currentFocusStreak } from "../../services/statsService";
+import { currentFocusStreak, focusHeatmap } from "../../services/statsService";
+import { FocusHeatmap } from "../../components/charts/FocusHeatmap";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { TimerRing } from "../../components/ui/TimerRing";
+import { CountUp } from "../../components/ui/CountUp";
 import { useAppStore } from "../../store/appStore";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { inferFileType, pickLocalFile, readTextFile } from "../../services/fileStorage";
@@ -83,10 +85,12 @@ export function TodayPage() {
   const todaySessions = store.sessions.filter((session) => isToday(parseISO(session.started_at)));
   const dueRevisions = store.revisions.filter((revision) => revision.status === "pending" && isToday(parseISO(revision.due_at)));
   const lateRevisions = store.revisions.filter((revision) => revision.status === "pending" && isPast(parseISO(revision.due_at)) && !isToday(parseISO(revision.due_at)));
-  const dueQuestions = store.questions.filter((question) => isToday(parseISO(question.next_due_at)) || parseISO(question.next_due_at) < new Date());
+  const dueQuestions = store.questions.filter((question) => question.review_count === 0 || isToday(parseISO(question.next_due_at)) || parseISO(question.next_due_at) < new Date());
   const todayMinutes = todaySessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
   const pomodoros = todaySessions.reduce((sum, session) => sum + session.pomodoros_completed, 0);
   const streak = currentFocusStreak(store.sessions);
+  const extendedToday = todayMinutes > 0; // the flame only "breathes" on days you keep the streak alive
+  const heatmap = useMemo(() => focusHeatmap(store.sessions), [store.sessions]);
   const [cycleRatings, setCycleRatings] = useState<{ hard: number; ok: number; easy: number }>({ hard: 0, ok: 0, easy: 0 });
   const [ratedThisPrompt, setRatedThisPrompt] = useState(false);
 
@@ -287,15 +291,18 @@ export function TodayPage() {
         <div className="card stat">
           <span className="muted" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             Focused today
-            {streak >= 3 ? (
-              <span className="streak-pill" title={`${streak}-day streak`}>
-                <Flame size={12} /> {streak}d
+            {streak >= 2 ? (
+              <span
+                className={`streak-pill${extendedToday ? " lit" : ""}`}
+                title={extendedToday ? `${streak}-day streak — kept alive today` : `${streak}-day streak — study today to keep it going`}
+              >
+                <Flame size={13} className="streak-flame" /> {streak} day streak
               </span>
             ) : null}
           </span>
-          <strong>{formatMinutes(todayMinutes)}</strong>
+          <strong><CountUp value={todayMinutes} format={formatMinutes} /></strong>
         </div>
-        <div className="card stat"><span className="muted">Pomodoros</span><strong>{pomodoros}</strong></div>
+        <div className="card stat"><span className="muted">Pomodoros</span><strong><CountUp value={pomodoros} /></strong></div>
       </section>
 
       <section className="grid two" style={{ marginTop: 20 }}>
@@ -512,9 +519,9 @@ export function TodayPage() {
               {recentTopics.length ? (
                 <>
                   <h3 style={{ margin: 0 }}>Recent topics</h3>
-                  <div className="list">
-                    {recentTopics.map((topic) => (
-                      <button key={topic.id} type="button" className="list-item" style={{ background: "transparent", cursor: "pointer", textAlign: "left", width: "100%" }} onClick={() => handleQuickStartFromTopic(topic.id)}>
+                  <div className="list stagger">
+                    {recentTopics.map((topic, i) => (
+                      <button key={topic.id} type="button" className="list-item" style={{ background: "transparent", cursor: "pointer", textAlign: "left", width: "100%", "--i": i } as CSSProperties} onClick={() => handleQuickStartFromTopic(topic.id)}>
                         <div className="split"><span>{topic.title}</span><span className="muted">Pick to start</span></div>
                       </button>
                     ))}
@@ -523,6 +530,12 @@ export function TodayPage() {
               ) : null}
             </div>
           )}
+        </div>
+      </section>
+      <section style={{ marginTop: 20 }}>
+        <div className="card grid">
+          <h2>Focus consistency · last year</h2>
+          <FocusHeatmap data={heatmap} sessions={store.sessions} />
         </div>
       </section>
     </>

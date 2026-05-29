@@ -47,7 +47,12 @@ export function PracticePage() {
 
   const pool = useMemo(() => {
     if (mode === "due") {
-      return store.questions.filter((question) => isToday(parseISO(question.next_due_at)) || isPast(parseISO(question.next_due_at)));
+      // Due = never reviewed yet, or scheduled for today/earlier. Always shuffled
+      // so the queue isn't a fixed next_due_at order every session.
+      const list = store.questions.filter(
+        (question) => question.review_count === 0 || isToday(parseISO(question.next_due_at)) || isPast(parseISO(question.next_due_at))
+      );
+      return shuffleWithSeed(list, shuffleSeed);
     }
     if (mode === "topic") {
       const list = store.questions.filter((question) => !topicId || question.topic_id === topicId);
@@ -167,7 +172,7 @@ export function PracticePage() {
           </>
         ) : null}
         <span className="muted" style={{ marginLeft: "auto", fontSize: "var(--text-xs)" }}>
-          Space: reveal · → / N: next · 1-4: rate
+          Space: reveal · → / N: next · 1-4: rate · ?: all shortcuts
         </span>
       </div>
       <section className="card raised" style={{ marginTop: 20 }}>
