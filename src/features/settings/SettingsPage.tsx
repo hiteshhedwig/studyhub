@@ -5,7 +5,8 @@ import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { closeMiniOverlay, openMiniOverlay } from "../../services/overlayWindowService";
 import { exportDatabaseToFile, importDatabaseFromFile } from "../../services/backupService";
 import { SOUND_VOLUME_MAX, getVolume, previewBell, setVolume, unlockAudio } from "../../services/soundService";
-import { POMODORO_PRESETS, getDefaultPomodoroId, setDefaultPomodoro, getPracticeShortcutsEnabled, setPracticeShortcutsEnabled, getAiEvalConfig, setAiEvalEnabled, setAiApiKey, setAiModel, DEFAULT_AI_MODEL, type PomodoroPresetId } from "../../services/preferencesService";
+import { POMODORO_PRESETS, getDefaultPomodoroId, setDefaultPomodoro, getPracticeShortcutsEnabled, setPracticeShortcutsEnabled, getAiEvalConfig, setAiEvalEnabled, setAiApiKey, setAiModel, DEFAULT_AI_MODEL, getExamConfig, setExamEnabled, setExamDate, type PomodoroPresetId } from "../../services/preferencesService";
+import { differenceInCalendarDays } from "date-fns";
 import { confirmDialog, toast } from "../../store/uiStore";
 
 export function SettingsPage() {
@@ -16,6 +17,7 @@ export function SettingsPage() {
   const [pomodoroPreset, setPomodoroPreset] = useState<PomodoroPresetId>(() => getDefaultPomodoroId());
   const [practiceShortcuts, setPracticeShortcuts] = useState(() => getPracticeShortcutsEnabled());
   const [ai, setAi] = useState(() => getAiEvalConfig());
+  const [exam, setExam] = useState(() => getExamConfig());
 
   function handleVolumeChange(next: number) {
     setVolumeState(next);
@@ -54,6 +56,18 @@ export function SettingsPage() {
     setAi((prev) => ({ ...prev, model }));
     setAiModel(model);
   }
+
+  function handleExamEnabledChange(enabled: boolean) {
+    setExam((prev) => ({ ...prev, enabled }));
+    setExamEnabled(enabled);
+  }
+
+  function handleExamDateChange(date: string) {
+    setExam((prev) => ({ ...prev, date }));
+    setExamDate(date);
+  }
+
+  const examDaysAway = exam.date ? differenceInCalendarDays(new Date(`${exam.date}T00:00:00`), new Date()) : null;
 
   async function handleExport() {
     setBusy("export");
@@ -131,6 +145,31 @@ export function SettingsPage() {
             <input type="checkbox" checked={practiceShortcuts} onChange={(event) => handlePracticeShortcutsChange(event.target.checked)} />
             <span>Enable practice keyboard shortcuts</span>
           </label>
+        </div>
+
+        <div className="card grid">
+          <h2>Exam mode</h2>
+          <p className="muted">
+            Set your exam / interview date and review intervals compress as it nears, so every card gets seen again (more
+            and more often) before the day. When off, scheduling is normal adaptive.
+          </p>
+          <label className="toggle">
+            <input type="checkbox" checked={exam.enabled} onChange={(event) => handleExamEnabledChange(event.target.checked)} />
+            <span>Enable exam mode</span>
+          </label>
+          <label className="field">
+            <span>Target date</span>
+            <input className="input" type="date" value={exam.date} onChange={(event) => handleExamDateChange(event.target.value)} />
+          </label>
+          {exam.enabled && examDaysAway !== null ? (
+            <p className="muted" style={{ margin: 0, fontSize: "var(--text-xs)" }}>
+              {examDaysAway > 0
+                ? `${examDaysAway} day${examDaysAway === 1 ? "" : "s"} away — intervals capped near ${Math.max(1, Math.floor(examDaysAway / 2))} day${Math.max(1, Math.floor(examDaysAway / 2)) === 1 ? "" : "s"}.`
+                : examDaysAway === 0
+                  ? "Exam is today — everything reviews daily."
+                  : "This date has passed — set a new one or turn exam mode off."}
+            </p>
+          ) : null}
         </div>
 
         <div className="card grid">

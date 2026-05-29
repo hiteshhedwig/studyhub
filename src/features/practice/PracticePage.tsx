@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isPast, isToday, parseISO } from "date-fns";
 import { Bookmark, BookmarkCheck, Sparkles } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RatingButtons } from "../../components/ui/RatingButtons";
 import { RichText } from "../../components/ui/RichText";
 import { AiEvalCard } from "../../components/ui/AiEvalCard";
-import { getPracticeShortcutsEnabled, getAiEvalConfig } from "../../services/preferencesService";
+import { getPracticeShortcutsEnabled, getAiEvalConfig, getActiveExamDate } from "../../services/preferencesService";
+import { isQuestionDue } from "../../services/spacedRepetition";
 import { evaluateAnswer, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
 import { useAppStore } from "../../store/appStore";
 import { toast } from "../../store/uiStore";
@@ -58,11 +58,10 @@ export function PracticePage() {
 
   const pool = useMemo(() => {
     if (mode === "due") {
-      // Due = never reviewed yet, or scheduled for today/earlier. Always shuffled
-      // so the queue isn't a fixed next_due_at order every session.
-      const list = store.questions.filter(
-        (question) => question.review_count === 0 || isToday(parseISO(question.next_due_at)) || isPast(parseISO(question.next_due_at))
-      );
+      // Due = never reviewed, scheduled for today/earlier, or pulled in by exam mode
+      // as the target date nears. Always shuffled so the queue isn't a fixed order.
+      const examDate = getActiveExamDate();
+      const list = store.questions.filter((question) => isQuestionDue(question, examDate));
       return shuffleWithSeed(list, shuffleSeed);
     }
     if (mode === "topic") {

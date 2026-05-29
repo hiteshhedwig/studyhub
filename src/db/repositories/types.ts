@@ -87,3 +87,6 @@ export type ReviewAttempt = {
   was_correct: number;
   time_spent_seconds: number;
 };
+export type NoteItem = { id: string; text: string; done: boolean };
+// (Note + NoteItem are imported by studyRepository.ts)
+export type Note = { id: string; title: string; items_json: string; color: string; created_at: string; updated_at: string };

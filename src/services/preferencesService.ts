@@ -106,3 +106,44 @@ export function setAiModel(model: string) {
     // ignore
   }
 }
+
+const EXAM_ENABLED_KEY = "study-hub-exam-enabled";
+const EXAM_DATE_KEY = "study-hub-exam-date";
+
+export type ExamConfig = { enabled: boolean; date: string };
+
+/** Exam / target-date mode. `date` is a "yyyy-MM-dd" string (or empty). */
+export function getExamConfig(): ExamConfig {
+  try {
+    return {
+      enabled: localStorage.getItem(EXAM_ENABLED_KEY) === "on",
+      date: localStorage.getItem(EXAM_DATE_KEY) ?? ""
+    };
+  } catch {
+    return { enabled: false, date: "" };
+  }
+}
+
+export function setExamEnabled(enabled: boolean) {
+  try {
+    localStorage.setItem(EXAM_ENABLED_KEY, enabled ? "on" : "off");
+  } catch {
+    // ignore
+  }
+}
+
+export function setExamDate(date: string) {
+  try {
+    localStorage.setItem(EXAM_DATE_KEY, date);
+  } catch {
+    // ignore
+  }
+}
+
+/** The active exam Date when exam mode is on with a valid date, else null. */
+export function getActiveExamDate(): Date | null {
+  const config = getExamConfig();
+  if (!config.enabled || !config.date) return null;
+  const parsed = new Date(`${config.date}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}

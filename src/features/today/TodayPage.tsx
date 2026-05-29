@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-import { format, isPast, isToday, parseISO } from "date-fns";
-import { ChevronRight, Flame, Layers2, Paperclip, Play, Square } from "lucide-react";
+import { differenceInCalendarDays, format, isPast, isToday, parseISO } from "date-fns";
+import { ChevronRight, Flame, Layers2, Paperclip, Play, Square, Target } from "lucide-react";
 import { currentFocusStreak, focusHeatmap } from "../../services/statsService";
+import { isQuestionDue } from "../../services/spacedRepetition";
 import { FocusHeatmap } from "../../components/charts/FocusHeatmap";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { TimerRing } from "../../components/ui/TimerRing";
 import { CountUp } from "../../components/ui/CountUp";
+import { NotesBoard } from "./NotesBoard";
 import { useAppStore } from "../../store/appStore";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { inferFileType, pickLocalFile, readTextFile } from "../../services/fileStorage";
@@ -16,7 +18,7 @@ import { formatSessionPlanSummary } from "../../services/timerLogic";
 import { openMiniOverlay } from "../../services/overlayWindowService";
 import { unlockAudio } from "../../services/soundService";
 import { useTimerSounds } from "../../hooks/useTimerSounds";
-import { getDefaultPomodoro, POMODORO_PRESETS } from "../../services/preferencesService";
+import { getDefaultPomodoro, POMODORO_PRESETS, getActiveExamDate } from "../../services/preferencesService";
 import { confirmDialog, toast } from "../../store/uiStore";
 import type { AfterFinalCycleBehavior, SessionMode } from "../../types/timer";
 
@@ -85,11 +87,14 @@ export function TodayPage() {
   const todaySessions = store.sessions.filter((session) => isToday(parseISO(session.started_at)));
   const dueRevisions = store.revisions.filter((revision) => revision.status === "pending" && isToday(parseISO(revision.due_at)));
   const lateRevisions = store.revisions.filter((revision) => revision.status === "pending" && isPast(parseISO(revision.due_at)) && !isToday(parseISO(revision.due_at)));
-  const dueQuestions = store.questions.filter((question) => question.review_count === 0 || isToday(parseISO(question.next_due_at)) || parseISO(question.next_due_at) < new Date());
+  const examDate = getActiveExamDate();
+  const examDaysAway = examDate ? differenceInCalendarDays(examDate, new Date()) : null;
+  const dueQuestions = store.questions.filter((question) => isQuestionDue(question, examDate));
   const todayMinutes = todaySessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
   const pomodoros = todaySessions.reduce((sum, session) => sum + session.pomodoros_completed, 0);
   const streak = currentFocusStreak(store.sessions);
   const extendedToday = todayMinutes > 0; // the flame only "breathes" on days you keep the streak alive
+  const neverSeenCount = store.questions.filter((question) => question.review_count === 0).length;
   const heatmap = useMemo(() => focusHeatmap(store.sessions), [store.sessions]);
   const [cycleRatings, setCycleRatings] = useState<{ hard: number; ok: number; easy: number }>({ hard: 0, ok: 0, easy: 0 });
   const [ratedThisPrompt, setRatedThisPrompt] = useState(false);
@@ -287,6 +292,15 @@ export function TodayPage() {
         eyebrow={format(new Date(), "EEEE, MMMM d")}
         actions={!store.activeSession ? <button className="btn primary" onClick={handleStart}><Play size={17} />Start study session</button> : null}
       />
+      {examDate && examDaysAway !== null && examDaysAway >= 0 ? (
+        <div className="exam-banner">
+          <Target size={18} aria-hidden="true" />
+          <div className="exam-banner-text">
+            <strong>{examDaysAway === 0 ? "Exam is today" : `Exam in ${examDaysAway} day${examDaysAway === 1 ? "" : "s"}`}</strong>
+            <span>{dueQuestions.length} due · {neverSeenCount} never seen</span>
+          </div>
+        </div>
+      ) : null}
       <section className="grid two">
         <div className="card stat">
           <span className="muted" style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -530,6 +544,11 @@ export function TodayPage() {
               ) : null}
             </div>
           )}
+        </div>
+      </section>
+      <section style={{ marginTop: 20 }}>
+        <div className="card grid">
+          <NotesBoard notes={store.notes} />
         </div>
       </section>
       <section style={{ marginTop: 20 }}>

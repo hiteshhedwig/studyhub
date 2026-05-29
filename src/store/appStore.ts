@@ -18,10 +18,13 @@ import {
   loadDashboardData,
   previewQuestionSetText,
   recordReview,
+  addNote,
   addQuestion,
+  deleteNote,
   startSession,
   toggleBookmark,
   updateCheatsheetTitle,
+  updateNote,
   updateQuestion,
   updateQuestionSetText,
   updateSessionNotes,
@@ -61,6 +64,9 @@ type AppState = DashboardData & {
   toggleBookmark: typeof toggleBookmark;
   addQuestion: typeof addQuestion;
   updateQuestion: typeof updateQuestion;
+  addNote: typeof addNote;
+  updateNote: typeof updateNote;
+  deleteNote: typeof deleteNote;
   importQuestionSetForTopic: typeof importQuestionSetForTopic;
   deleteSession: typeof deleteSession;
   deleteTopic: typeof deleteTopic;
@@ -75,7 +81,8 @@ const emptyData: DashboardData = {
   questionSets: [],
   questions: [],
   revisions: [],
-  links: []
+  links: [],
+  notes: []
 };
 
 async function refresh(set: (partial: Partial<AppState>) => void) {
@@ -130,6 +137,9 @@ export const useAppStore = create<AppState>((set) => ({
   toggleBookmark: wrap(set, toggleBookmark),
   addQuestion: wrap(set, addQuestion),
   updateQuestion: wrap(set, updateQuestion),
+  addNote: wrap(set, addNote),
+  updateNote: wrap(set, updateNote),
+  deleteNote: wrap(set, deleteNote),
   importQuestionSetForTopic: wrap(set, importQuestionSetForTopic),
   deleteSession: wrap(set, deleteSession),
   deleteTopic: wrap(set, deleteTopic),

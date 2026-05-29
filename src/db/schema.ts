@@ -109,6 +109,15 @@ CREATE TABLE IF NOT EXISTS Bookmark (
   FOREIGN KEY(question_id) REFERENCES Question(id)
 );
 
+CREATE TABLE IF NOT EXISTS Note (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  items_json TEXT NOT NULL DEFAULT '[]',
+  color TEXT NOT NULL DEFAULT 'n1',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS RevisionSchedule (
   id TEXT PRIMARY KEY,
   topic_id TEXT NOT NULL,

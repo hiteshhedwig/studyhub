@@ -2,7 +2,8 @@ import type { Database } from "sql.js";
 import { addDays } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
 import { calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
-import type { Category, Cheatsheet, Difficulty, Question, QuestionSet, ResourceLink, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
+import { getActiveExamDate } from "../../services/preferencesService";
+import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionSet, ResourceLink, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
 import type { QuestionImport } from "../../services/importQuestions";
 
 const id = () => crypto.randomUUID();
@@ -17,6 +18,7 @@ export type DashboardData = {
   questions: Question[];
   revisions: RevisionSchedule[];
   links: ResourceLink[];
+  notes: Note[];
 };
 
 async function withDb<T>(fn: (db: Database) => T | Promise<T>, persist = false): Promise<T> {
@@ -68,8 +70,34 @@ export async function loadDashboardData(): Promise<DashboardData> {
        FROM RevisionSchedule JOIN Topic ON Topic.id = RevisionSchedule.topic_id
        ORDER BY due_at ASC`
     ),
-    links: toRows<ResourceLink>(db, "SELECT * FROM ResourceLink ORDER BY created_at DESC")
+    links: toRows<ResourceLink>(db, "SELECT * FROM ResourceLink ORDER BY created_at DESC"),
+    notes: toRows<Note>(db, "SELECT * FROM Note ORDER BY created_at DESC")
   }));
+}
+
+export async function addNote(): Promise<Note> {
+  return withDb((db) => {
+    const ts = now();
+    const note: Note = { id: id(), title: "", items_json: "[]", color: "n1", created_at: ts, updated_at: ts };
+    db.run("INSERT INTO Note VALUES (?, ?, ?, ?, ?, ?)", [note.id, note.title, note.items_json, note.color, note.created_at, note.updated_at]);
+    return note;
+  }, true);
+}
+
+export async function updateNote(noteId: string, fields: { title: string; items: NoteItem[]; color: string }) {
+  return withDb((db) => {
+    db.run("UPDATE Note SET title = ?, items_json = ?, color = ?, updated_at = ? WHERE id = ?", [
+      fields.title,
+      JSON.stringify(fields.items),
+      fields.color,
+      now(),
+      noteId
+    ]);
+  }, true);
+}
+
+export async function deleteNote(noteId: string) {
+  return withDb((db) => db.run("DELETE FROM Note WHERE id = ?", [noteId]), true);
 }
 
 export async function createCategory(name: string, color = "#C9A66B") {
@@ -391,10 +419,23 @@ export async function getTopicAttempts(topicId: string): Promise<ReviewAttempt[]
 
 export async function recordReview(input: { question: Question; rating: ReviewRating; userAnswer: string; seconds: number }) {
   return withDb((db) => {
+    // Success streak = consecutive past reviews without a "forgot" (newest first,
+    // stop at the first lapse). Drives interval growth instead of raw review count.
+    const pastRatings = toRows<{ rating: ReviewRating }>(
+      db,
+      "SELECT rating FROM ReviewAttempt WHERE question_id = ? ORDER BY rowid DESC",
+      [input.question.id]
+    );
+    let successStreak = 0;
+    for (const past of pastRatings) {
+      if (past.rating === "forgot") break;
+      successStreak += 1;
+    }
     const result = calculateQuestionReview({
       rating: input.rating,
       currentMastery: input.question.mastery_score,
-      reviewCount: input.question.review_count,
+      successStreak,
+      targetDate: getActiveExamDate(),
       reviewedAt: new Date()
     });
     db.run("INSERT INTO ReviewAttempt VALUES (?, ?, ?, ?, ?, ?, ?)", [
