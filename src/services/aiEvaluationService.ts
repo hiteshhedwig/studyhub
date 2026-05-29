@@ -6,8 +6,17 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const TIMEOUT_MS = 30000;
 
 const SYSTEM_PROMPT = `Grade a student's active-recall answer against the canonical answer for interview prep.
-Reward correct meaning, not exact wording. Penalize missing key points, wrong claims, and vague interview phrasing.
-If the student answer is blank, return verdict "blank", score 0, recall_grade "forgot".
+Judge meaning, key points, and (for quantitative questions) whether the computations and final results match. Ignore differences in wording, formatting, notation, and rounding. If the student's reasoning and conclusions match the canonical answer, score high even if phrasing is informal.
+Penalize only genuinely missing key points or wrong claims.
+
+Decide the score first, then keep verdict and recall_grade consistent with it:
+- 9-10 -> verdict "correct", recall_grade "easy"
+- 7-8  -> verdict "mostly_correct", recall_grade "easy" or "medium"
+- 5-6  -> verdict "partially_correct", recall_grade "medium"
+- 3-4  -> verdict "mostly_incorrect", recall_grade "hard"
+- 1-2  -> verdict "incorrect", recall_grade "hard" or "forgot"
+- 0    -> verdict "blank", recall_grade "forgot" (only when the student answer is empty)
+
 Be concise: at most 3 short bullets per list (<=12 words each); interview_feedback <= 1 sentence.
 Return JSON only.`;
 
