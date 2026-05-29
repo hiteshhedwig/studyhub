@@ -1,5 +1,5 @@
 import type { Database } from "sql.js";
-import { addDays } from "date-fns";
+import { addDays, parseISO } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
 import { calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
 import { getActiveExamDate } from "../../services/preferencesService";
@@ -456,6 +456,138 @@ export async function recordReview(input: { question: Question; rating: ReviewRa
     const topicQuestions = toRows<Question>(db, "SELECT * FROM Question WHERE topic_id = ?", [input.question.topic_id]);
     const average = Math.round(topicQuestions.reduce((sum, question) => sum + (question.id === input.question.id ? result.masteryScore : question.mastery_score), 0) / topicQuestions.length);
     db.run("UPDATE Topic SET mastery_score = ?, updated_at = ? WHERE id = ?", [average, now(), input.question.topic_id]);
+  }, true);
+}
+
+export type ExportedQuestion = {
+  id: string;
+  question: string;
+  answer: string;
+  difficulty: Difficulty;
+  tags: string[];
+  topic_id: string;
+  topic_title: string;
+  next_due_at: string;
+  last_reviewed_at: string | null;
+  review_count: number;
+  mastery_score: number;
+};
+
+/** Snapshot of the question bank for the phone practice app (questions-out hop). */
+export async function exportPracticeQuestions(): Promise<ExportedQuestion[]> {
+  return withDb((db) => {
+    const rows = toRows<Question & { topic_title: string }>(
+      db,
+      `SELECT Question.*, Topic.title AS topic_title
+       FROM Question JOIN Topic ON Topic.id = Question.topic_id
+       ORDER BY Question.rowid ASC`
+    );
+    return rows.map((q) => ({
+      id: q.id,
+      question: q.question,
+      answer: q.answer,
+      difficulty: q.difficulty,
+      tags: JSON.parse(q.tags_json) as string[],
+      topic_id: q.topic_id,
+      topic_title: q.topic_title,
+      next_due_at: q.next_due_at,
+      last_reviewed_at: q.last_reviewed_at,
+      review_count: q.review_count,
+      mastery_score: q.mastery_score
+    }));
+  });
+}
+
+const VALID_RATINGS = new Set<ReviewRating>(["forgot", "hard", "good", "easy"]);
+
+// Recompute a question's progress by replaying its full attempt history (chronological),
+// using the streak engine WITHOUT exam clamp — the stored schedule stays pure-adaptive and
+// exam mode is applied dynamically at due-selection time.
+function recomputeQuestionFromHistory(db: Database, questionId: string) {
+  const attempts = toRows<{ rating: ReviewRating; reviewed_at: string }>(
+    db,
+    "SELECT rating, reviewed_at FROM ReviewAttempt WHERE question_id = ? ORDER BY reviewed_at ASC, rowid ASC",
+    [questionId]
+  );
+  let mastery = 0;
+  let streak = 0;
+  let count = 0;
+  let lastReviewed: string | null = null;
+  let nextDue: string | null = null;
+  for (const attempt of attempts) {
+    const result = calculateQuestionReview({
+      rating: attempt.rating,
+      currentMastery: mastery,
+      successStreak: streak,
+      reviewedAt: parseISO(attempt.reviewed_at)
+    });
+    mastery = result.masteryScore;
+    nextDue = result.nextDueAt;
+    lastReviewed = attempt.reviewed_at;
+    count += 1;
+    streak = attempt.rating === "forgot" ? 0 : streak + 1;
+  }
+  if (count > 0 && nextDue) {
+    db.run("UPDATE Question SET review_count = ?, mastery_score = ?, last_reviewed_at = ?, next_due_at = ? WHERE id = ?", [count, mastery, lastReviewed, nextDue, questionId]);
+  }
+}
+
+/**
+ * Merge practice attempts from the phone (attempts-in hop). Non-destructive:
+ * new attempts are unioned by id (existing/unknown-question/invalid ones skipped),
+ * then each touched question — and its topic's mastery — is recomputed from the merged
+ * history. Safe to run repeatedly; ids dedupe so nothing is double-counted.
+ */
+export async function mergePracticeAttempts(attempts: ReviewAttempt[]): Promise<{ merged: number; skipped: number; questions: number }> {
+  return withDb((db) => {
+    const existingIds = new Set(toRows<{ id: string }>(db, "SELECT id FROM ReviewAttempt").map((r) => r.id));
+    const validQuestions = new Set(toRows<{ id: string }>(db, "SELECT id FROM Question").map((r) => r.id));
+    const touched = new Set<string>();
+    let merged = 0;
+    let skipped = 0;
+
+    for (const attempt of attempts) {
+      if (
+        !attempt ||
+        typeof attempt.id !== "string" ||
+        typeof attempt.question_id !== "string" ||
+        typeof attempt.reviewed_at !== "string" ||
+        !VALID_RATINGS.has(attempt.rating) ||
+        existingIds.has(attempt.id) ||
+        !validQuestions.has(attempt.question_id)
+      ) {
+        skipped += 1;
+        continue;
+      }
+      db.run("INSERT INTO ReviewAttempt VALUES (?, ?, ?, ?, ?, ?, ?)", [
+        attempt.id,
+        attempt.question_id,
+        attempt.reviewed_at,
+        attempt.rating,
+        attempt.user_answer ?? null,
+        attempt.was_correct ? 1 : 0,
+        typeof attempt.time_spent_seconds === "number" ? attempt.time_spent_seconds : 0
+      ]);
+      existingIds.add(attempt.id);
+      touched.add(attempt.question_id);
+      merged += 1;
+    }
+
+    const topics = new Set<string>();
+    for (const questionId of touched) {
+      recomputeQuestionFromHistory(db, questionId);
+      const owner = one<{ topic_id: string }>(db, "SELECT topic_id FROM Question WHERE id = ?", [questionId]);
+      if (owner) topics.add(owner.topic_id);
+    }
+    for (const topicId of topics) {
+      const scores = toRows<{ mastery_score: number }>(db, "SELECT mastery_score FROM Question WHERE topic_id = ?", [topicId]);
+      if (scores.length) {
+        const avg = Math.round(scores.reduce((sum, s) => sum + s.mastery_score, 0) / scores.length);
+        db.run("UPDATE Topic SET mastery_score = ?, updated_at = ? WHERE id = ?", [avg, now(), topicId]);
+      }
+    }
+
+    return { merged, skipped, questions: touched.size };
   }, true);
 }
 

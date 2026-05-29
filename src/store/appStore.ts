@@ -21,6 +21,8 @@ import {
   addNote,
   addQuestion,
   deleteNote,
+  exportPracticeQuestions,
+  mergePracticeAttempts,
   startSession,
   toggleBookmark,
   updateCheatsheetTitle,
@@ -67,6 +69,8 @@ type AppState = DashboardData & {
   addNote: typeof addNote;
   updateNote: typeof updateNote;
   deleteNote: typeof deleteNote;
+  exportPracticeQuestions: typeof exportPracticeQuestions;
+  mergePracticeAttempts: typeof mergePracticeAttempts;
   importQuestionSetForTopic: typeof importQuestionSetForTopic;
   deleteSession: typeof deleteSession;
   deleteTopic: typeof deleteTopic;
@@ -140,6 +144,8 @@ export const useAppStore = create<AppState>((set) => ({
   addNote: wrap(set, addNote),
   updateNote: wrap(set, updateNote),
   deleteNote: wrap(set, deleteNote),
+  exportPracticeQuestions,
+  mergePracticeAttempts: wrap(set, mergePracticeAttempts),
   importQuestionSetForTopic: wrap(set, importQuestionSetForTopic),
   deleteSession: wrap(set, deleteSession),
   deleteTopic: wrap(set, deleteTopic),

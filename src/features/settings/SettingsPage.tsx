@@ -7,10 +7,11 @@ import { exportDatabaseToFile, importDatabaseFromFile } from "../../services/bac
 import { SOUND_VOLUME_MAX, getVolume, previewBell, setVolume, unlockAudio } from "../../services/soundService";
 import { POMODORO_PRESETS, getDefaultPomodoroId, setDefaultPomodoro, getPracticeShortcutsEnabled, setPracticeShortcutsEnabled, getAiEvalConfig, setAiEvalEnabled, setAiApiKey, setAiModel, DEFAULT_AI_MODEL, getExamConfig, setExamEnabled, setExamDate, type PomodoroPresetId } from "../../services/preferencesService";
 import { differenceInCalendarDays } from "date-fns";
+import { buildQuestionsFile, parsePracticeFile, saveTextFile, openTextFile, practiceFileName } from "../../services/practiceSyncService";
 import { confirmDialog, toast } from "../../store/uiStore";
 
 export function SettingsPage() {
-  const { theme, setTheme, resetAll } = useAppStore();
+  const { theme, setTheme, resetAll, exportPracticeQuestions, mergePracticeAttempts } = useAppStore();
   const timer = useSessionTimerStore();
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [volume, setVolumeState] = useState(() => getVolume());
@@ -18,6 +19,7 @@ export function SettingsPage() {
   const [practiceShortcuts, setPracticeShortcuts] = useState(() => getPracticeShortcutsEnabled());
   const [ai, setAi] = useState(() => getAiEvalConfig());
   const [exam, setExam] = useState(() => getExamConfig());
+  const [syncBusy, setSyncBusy] = useState(false);
 
   function handleVolumeChange(next: number) {
     setVolumeState(next);
@@ -86,6 +88,40 @@ export function SettingsPage() {
       setTimeout(() => window.location.reload(), 600);
     } else {
       toast.danger(result.reason ?? "Import failed.");
+    }
+  }
+
+  async function exportQuestionsForPhone() {
+    setSyncBusy(true);
+    try {
+      const questions = await exportPracticeQuestions();
+      const saved = await saveTextFile(practiceFileName("studyhub-questions"), buildQuestionsFile(questions));
+      if (saved) toast.success(`Exported ${questions.length} questions for the phone app.`);
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not export questions.");
+    } finally {
+      setSyncBusy(false);
+    }
+  }
+
+  async function importPracticeFromPhone() {
+    setSyncBusy(true);
+    try {
+      const text = await openTextFile();
+      if (!text) return;
+      const parsed = parsePracticeFile(text);
+      if (!parsed.ok) {
+        toast.danger(parsed.error);
+        return;
+      }
+      const summary = await mergePracticeAttempts(parsed.attempts);
+      toast.success(
+        `Merged ${summary.merged} new attempt${summary.merged === 1 ? "" : "s"} across ${summary.questions} question${summary.questions === 1 ? "" : "s"}${summary.skipped ? ` · ${summary.skipped} skipped` : ""}.`
+      );
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not merge practice.");
+    } finally {
+      setSyncBusy(false);
     }
   }
 
@@ -243,6 +279,19 @@ export function SettingsPage() {
             <button className="btn" onClick={handleImport} disabled={busy !== null}>{busy === "import" ? "Importing…" : "Import data"}</button>
           </div>
           <button className="btn danger" onClick={reset}>Reset local data…</button>
+        </div>
+
+        <div className="card grid">
+          <h2>Practice sync (phone)</h2>
+          <p className="muted">
+            Practice on the go: <strong>export your questions</strong> to a JSON file, put it in your shared cloud drive
+            (Google Drive / Dropbox), and load it in the phone practice app. When you're back, <strong>import &amp; merge</strong>
+            the day's practice — it unions new attempts and recomputes progress, so nothing is overwritten or double-counted.
+          </p>
+          <div className="button-row">
+            <button className="btn" onClick={exportQuestionsForPhone} disabled={syncBusy}>{syncBusy ? "Working…" : "Export questions for phone"}</button>
+            <button className="btn primary" onClick={importPracticeFromPhone} disabled={syncBusy}>{syncBusy ? "Working…" : "Import &amp; merge practice"}</button>
+          </div>
         </div>
       </section>
     </>
