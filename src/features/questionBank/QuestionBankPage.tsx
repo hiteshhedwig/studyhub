@@ -1,11 +1,16 @@
 import { useMemo, useState } from "react";
-import { Import, Trash2 } from "lucide-react";
+import { Import, RefreshCw, Trash2 } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { RichText } from "../../components/ui/RichText";
+import { DiffView } from "../../components/ui/DiffView";
 import { useAppStore } from "../../store/appStore";
-import { parseQuestionImport } from "../../services/importQuestions";
+import { parseQuestionImport, type QuestionImport } from "../../services/importQuestions";
+import type { QuestionSetTextDiff } from "../../db/repositories/studyRepository";
 import { pickLocalFile, readTextFile } from "../../services/fileStorage";
 import { confirmDialog, toast } from "../../store/uiStore";
+
+type UpdatePreview = { setId: string; title: string; data: QuestionImport; diff: QuestionSetTextDiff };
 
 type Tab = "questions" | "sets";
 
@@ -16,6 +21,8 @@ export function QuestionBankPage() {
   const [difficulty, setDifficulty] = useState("");
   const [tag, setTag] = useState("");
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [preview, setPreview] = useState<UpdatePreview | null>(null);
+  const [applying, setApplying] = useState(false);
   const tags = [...new Set(store.questions.flatMap((question) => JSON.parse(question.tags_json) as string[]))].sort();
   const filtered = useMemo(
     () =>
@@ -40,6 +47,40 @@ export function QuestionBankPage() {
       toast.success(`Imported ${result.data.questions.length} questions into ${result.data.topic}.`);
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not import that Q&A file.");
+    }
+  }
+
+  async function updateSetFromJson(setId: string, title: string, questionCount: number) {
+    const path = await pickLocalFile(["json"]);
+    if (!path) return;
+    try {
+      const result = parseQuestionImport(await readTextFile(path));
+      if (!result.ok) {
+        toast.danger(result.error);
+        return;
+      }
+      if (result.data.questions.length !== questionCount) {
+        toast.danger(`This file has ${result.data.questions.length} questions but "${title}" has ${questionCount}. Counts must match (same questions, same order) to update in place.`);
+        return;
+      }
+      const diff = await store.previewQuestionSetText(setId, result.data);
+      setPreview({ setId, title, data: result.data, diff });
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not read that file.");
+    }
+  }
+
+  async function applyPreview() {
+    if (!preview) return;
+    setApplying(true);
+    try {
+      const updated = await store.updateQuestionSetText(preview.setId, preview.data);
+      toast.success(`Updated ${updated} questions in "${preview.title}". History preserved.`);
+      setPreview(null);
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not update that set.");
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -111,11 +152,11 @@ export function QuestionBankPage() {
                 <article className="card" key={question.id}>
                   <div className="qa-row">
                     <span className="pill">{question.topic_title} · {question.difficulty}</span>
-                    <h2 style={{ margin: 0 }}>{question.question}</h2>
+                    <RichText className="prompt">{question.question}</RichText>
                     <button type="button" className="qa-toggle" onClick={() => toggleRevealed(question.id)}>
                       {isOpen ? "Hide answer" : "Show answer"}
                     </button>
-                    {isOpen ? <p style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}>{question.answer}</p> : null}
+                    {isOpen ? <RichText>{question.answer}</RichText> : null}
                     <p className="muted" style={{ margin: 0 }}>Due {new Date(question.next_due_at).toLocaleDateString()} · Mastery {question.mastery_score}%</p>
                   </div>
                 </article>
@@ -134,13 +175,61 @@ export function QuestionBankPage() {
                     <h2 style={{ margin: 0 }}>{set.title}</h2>
                     <p className="muted">{set.topic_title} · {setQuestions.length} questions · source: {set.source}</p>
                   </div>
-                  <button className="btn danger" onClick={() => void deleteSet(set.id, set.title)}><Trash2 size={17} />Delete set</button>
+                  <div className="button-row">
+                    <button className="btn" onClick={() => void updateSetFromJson(set.id, set.title, setQuestions.length)}><RefreshCw size={17} />Update from JSON</button>
+                    <button className="btn danger" onClick={() => void deleteSet(set.id, set.title)}><Trash2 size={17} />Delete set</button>
+                  </div>
                 </div>
               </article>
             );
           }) : <EmptyState>No question sets imported yet.</EmptyState>}
         </section>
       )}
+
+      {preview ? (
+        <div className="modal-backdrop" onMouseDown={() => !applying && setPreview(null)}>
+          <div className="modal diff-modal" role="dialog" aria-modal="true" aria-labelledby="diff-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="split">
+              <h2 id="diff-title" className="modal-title">Preview update · {preview.title}</h2>
+              <button type="button" className="btn small" onClick={() => setPreview(null)} disabled={applying}>Close</button>
+            </div>
+            <p className="muted modal-body">
+              {preview.diff.changed} of {preview.diff.total} questions change. Review history (mastery, due dates, past attempts) is kept.
+            </p>
+            <div className="diff-scroll">
+              {preview.diff.changed === 0 ? (
+                <EmptyState>This file's text is identical to what's already stored — nothing to update.</EmptyState>
+              ) : (
+                preview.diff.items
+                  .filter((item) => item.questionChanged || item.answerChanged)
+                  .map((item) => (
+                    <div className="diff-item" key={item.index}>
+                      <p className="diff-item-label">Question {item.index + 1}</p>
+                      {item.questionChanged ? (
+                        <>
+                          <p className="diff-field-label">Question</p>
+                          <DiffView before={item.oldQuestion} after={item.newQuestion} />
+                        </>
+                      ) : null}
+                      {item.answerChanged ? (
+                        <>
+                          <p className="diff-field-label">Answer</p>
+                          <DiffView before={item.oldAnswer} after={item.newAnswer} />
+                        </>
+                      ) : null}
+                    </div>
+                  ))
+              )}
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn" onClick={() => setPreview(null)} disabled={applying}>Cancel</button>
+              <button type="button" className="btn primary" onClick={() => void applyPreview()} disabled={applying || preview.diff.changed === 0}>
+                {applying ? "Updating…" : `Update ${preview.diff.total} questions`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

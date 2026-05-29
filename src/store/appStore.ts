@@ -15,9 +15,11 @@ import {
   importQuestionSet,
   importQuestionSetForTopic,
   loadDashboardData,
+  previewQuestionSetText,
   recordReview,
   startSession,
   updateCheatsheetTitle,
+  updateQuestionSetText,
   updateSessionNotes,
   updateTopic,
   type DashboardData
@@ -49,6 +51,8 @@ type AppState = DashboardData & {
   deleteQuestionSet: typeof deleteQuestionSet;
   deleteCheatsheet: typeof deleteCheatsheet;
   updateCheatsheetTitle: typeof updateCheatsheetTitle;
+  updateQuestionSetText: typeof updateQuestionSetText;
+  previewQuestionSetText: typeof previewQuestionSetText;
   importQuestionSetForTopic: typeof importQuestionSetForTopic;
   deleteSession: typeof deleteSession;
   deleteTopic: typeof deleteTopic;
@@ -112,6 +116,8 @@ export const useAppStore = create<AppState>((set) => ({
   deleteQuestionSet: wrap(set, deleteQuestionSet),
   deleteCheatsheet: wrap(set, deleteCheatsheet),
   updateCheatsheetTitle: wrap(set, updateCheatsheetTitle),
+  updateQuestionSetText: wrap(set, updateQuestionSetText),
+  previewQuestionSetText,
   importQuestionSetForTopic: wrap(set, importQuestionSetForTopic),
   deleteSession: wrap(set, deleteSession),
   deleteTopic: wrap(set, deleteTopic),

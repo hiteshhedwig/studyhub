@@ -3,6 +3,7 @@ import { isPast, isToday, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RatingButtons } from "../../components/ui/RatingButtons";
+import { RichText } from "../../components/ui/RichText";
 import { useAppStore } from "../../store/appStore";
 
 type Mode = "due" | "topic" | "weak" | "random";
@@ -182,7 +183,7 @@ export function PracticePage() {
               <span className="pill">{current.topic_title} · {current.difficulty}</span>
               <span className="muted">{(index % pool.length) + 1} / {pool.length}</span>
             </div>
-            <h2>{current.question}</h2>
+            <RichText className="prompt">{current.question}</RichText>
             <label className="field">
               <span>Your answer</span>
               <textarea ref={answerRef} className="textarea" value={answer} onChange={(event) => setAnswer(event.target.value)} />
@@ -194,7 +195,7 @@ export function PracticePage() {
               </div>
             ) : (
               <>
-                <div className="card"><h3>Answer</h3><p>{current.answer}</p></div>
+                <div className="card"><h3>Answer</h3><RichText>{current.answer}</RichText></div>
                 <RatingButtons onRate={rate} />
               </>
             )}

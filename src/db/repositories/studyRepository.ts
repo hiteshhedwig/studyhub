@@ -295,6 +295,83 @@ export async function importQuestionSetForTopic(data: QuestionImport, topicId: s
   }, true);
 }
 
+/**
+ * Re-skins an existing set's question/answer text (e.g. plain → Markdown+LaTeX)
+ * WITHOUT touching review history. Questions are matched by position: the file's
+ * questions array, in order, maps onto the set's existing rows ordered by rowid
+ * (insertion order). Spaced-repetition fields (next_due_at, last_reviewed_at,
+ * review_count, mastery_score) and every ReviewAttempt are left untouched because
+ * the rows keep their original ids. The counts must match exactly.
+ */
+export async function updateQuestionSetText(setId: string, data: QuestionImport) {
+  return withDb((db) => {
+    const set = one<QuestionSet>(db, "SELECT * FROM QuestionSet WHERE id = ?", [setId]);
+    if (!set) throw new Error("That question set no longer exists.");
+    const existing = toRows<Question>(db, "SELECT * FROM Question WHERE question_set_id = ? ORDER BY rowid ASC", [setId]);
+    if (existing.length !== data.questions.length) {
+      throw new Error(
+        `This file has ${data.questions.length} questions but the set has ${existing.length}. ` +
+          "Counts must match (same questions, same order) to update in place and keep history."
+      );
+    }
+    existing.forEach((question, index) => {
+      const next = data.questions[index];
+      db.run(
+        "UPDATE Question SET question = ?, answer = ?, difficulty = ?, tags_json = ? WHERE id = ?",
+        [next.question, next.answer, next.difficulty as Difficulty, JSON.stringify(next.tags), question.id]
+      );
+    });
+    db.run("UPDATE QuestionSet SET title = ?, source = ?, raw_json = ? WHERE id = ?", [data.title, data.source, JSON.stringify(data), setId]);
+    return existing.length;
+  }, true);
+}
+
+export type QuestionSetTextDiff = {
+  total: number;
+  changed: number;
+  items: Array<{
+    index: number;
+    questionChanged: boolean;
+    answerChanged: boolean;
+    oldQuestion: string;
+    newQuestion: string;
+    oldAnswer: string;
+    newAnswer: string;
+  }>;
+};
+
+/**
+ * Read-only dry run of {@link updateQuestionSetText}. Returns the old→new text
+ * pairs using the exact same matching (rowid order) the update uses, so a
+ * preview can never disagree with what actually gets written.
+ */
+export async function previewQuestionSetText(setId: string, data: QuestionImport): Promise<QuestionSetTextDiff> {
+  return withDb((db) => {
+    const set = one<QuestionSet>(db, "SELECT * FROM QuestionSet WHERE id = ?", [setId]);
+    if (!set) throw new Error("That question set no longer exists.");
+    const existing = toRows<Question>(db, "SELECT * FROM Question WHERE question_set_id = ? ORDER BY rowid ASC", [setId]);
+    if (existing.length !== data.questions.length) {
+      throw new Error(
+        `This file has ${data.questions.length} questions but the set has ${existing.length}. ` +
+          "Counts must match (same questions, same order) to update in place and keep history."
+      );
+    }
+    const items = existing.map((question, index) => {
+      const next = data.questions[index];
+      return {
+        index,
+        questionChanged: question.question !== next.question,
+        answerChanged: question.answer !== next.answer,
+        oldQuestion: question.question,
+        newQuestion: next.question,
+        oldAnswer: question.answer,
+        newAnswer: next.answer
+      };
+    });
+    return { total: existing.length, changed: items.filter((it) => it.questionChanged || it.answerChanged).length, items };
+  });
+}
+
 export async function recordReview(input: { question: Question; rating: ReviewRating; userAnswer: string; seconds: number }) {
   return withDb((db) => {
     const result = calculateQuestionReview({
