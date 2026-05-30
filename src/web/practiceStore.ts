@@ -26,7 +26,7 @@ export const usePracticeStore = create<PracticeState>()(
       attempts: [],
       examDate: null,
       loadedAt: null,
-      load: (questions, examDate) => set({ questions, examDate, loadedAt: new Date().toISOString() }),
+      load: (questions, examDate) => set({ questions, examDate, attempts: [], loadedAt: new Date().toISOString() }),
       record: (questionId, rating, userAnswer, seconds) => {
         const state = get();
         const question = state.questions.find((q) => q.id === questionId);

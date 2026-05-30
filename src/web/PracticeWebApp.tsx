@@ -50,6 +50,9 @@ export function PracticeWebApp() {
   }, [currentId]);
 
   async function loadQuestions() {
+    if (attempts.length > 0 && !window.confirm(`Loading a new file will discard ${attempts.length} unexported practice ${attempts.length === 1 ? "rating" : "ratings"} on this device. Continue?`)) {
+      return;
+    }
     const text = await openTextFile();
     if (!text) return;
     const parsed = parseQuestionsFile(text);
