@@ -26,8 +26,8 @@ const baseInput = {
 
 describe("timer logic", () => {
   it("computes planned session summaries without final break unless selected", () => {
-    expect(formatSessionPlanSummary(baseInput)).toBe("2 focus cycles · 60 min focus · 10 min break · about 1h 10m total");
-    expect(formatSessionPlanSummary({ ...baseInput, afterFinalCycleBehavior: "long_break" })).toBe("2 focus cycles · 60 min focus · 10 min break + 20 min long break · about 1h 30m total");
+    expect(formatSessionPlanSummary(baseInput)).toBe("2 focus cycles · 60m focus · 10 min break · about 70m total");
+    expect(formatSessionPlanSummary({ ...baseInput, afterFinalCycleBehavior: "long_break" })).toBe("2 focus cycles · 60m focus · 10 min break + 20 min long break · about 90m total");
   });
 
   it("derives remaining time from timestamps", () => {

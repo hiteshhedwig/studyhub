@@ -1,0 +1,65 @@
+/*
+ * Accent presets. The chosen preset is applied as a `data-accent` attribute on
+ * <html> (alongside `data-theme`); these rules override the accent custom
+ * properties the theme sets. Defined after themes.css so they win on equal
+ * specificity. Dark values are the defaults; soft-light gets darker, more
+ * saturated variants so the accent keeps contrast on a white surface.
+ *
+ * The focus heatmap derives its ramp from `--accent` (see globals.css), so each
+ * preset automatically gets a matching, same-hue heatmap ramp — no per-preset
+ * heatmap colors needed.
+ *
+ * Keep these in sync with ACCENT_PRESETS in src/services/accentPresets.ts.
+ */
+
+[data-accent="teal"] {
+  --accent: #46b6a6;
+  --accent-strong: #34998a;
+  --accent-contrast: #041f1c;
+}
+[data-accent="blue"] {
+  --accent: #5b8fd6;
+  --accent-strong: #5085cc;
+  --accent-contrast: #071a24;
+}
+[data-accent="green"] {
+  --accent: #6aa97f;
+  --accent-strong: #57936d;
+  --accent-contrast: #071d12;
+}
+[data-accent="violet"] {
+  --accent: #9b87d6;
+  --accent-strong: #8674c1;
+  --accent-contrast: #120f24;
+}
+[data-accent="rosewood"] {
+  --accent: #b47b96;
+  --accent-strong: #a57288;
+  --accent-contrast: #251019;
+}
+
+[data-theme="soft-light"][data-accent="teal"] {
+  --accent: #0b7f75;
+  --accent-strong: #086e66;
+  --accent-contrast: #ffffff;
+}
+[data-theme="soft-light"][data-accent="blue"] {
+  --accent: #3667b4;
+  --accent-strong: #2b5497;
+  --accent-contrast: #ffffff;
+}
+[data-theme="soft-light"][data-accent="green"] {
+  --accent: #3f8a5c;
+  --accent-strong: #347049;
+  --accent-contrast: #ffffff;
+}
+[data-theme="soft-light"][data-accent="violet"] {
+  --accent: #6b54b0;
+  --accent-strong: #573f98;
+  --accent-contrast: #ffffff;
+}
+[data-theme="soft-light"][data-accent="rosewood"] {
+  --accent: #9c5a76;
+  --accent-strong: #84455f;
+  --accent-contrast: #ffffff;
+}

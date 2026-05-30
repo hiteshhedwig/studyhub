@@ -9,6 +9,7 @@ export function App() {
   const isLoading = useAppStore((state) => state.isLoading);
   const error = useAppStore((state) => state.error);
   const theme = useAppStore((state) => state.theme);
+  const accent = useAppStore((state) => state.accent);
 
   useEffect(() => {
     void load();
@@ -18,6 +19,10 @@ export function App() {
     const resolved = theme === "system" ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "soft-light" : "warm-dark") : theme;
     document.documentElement.dataset.theme = resolved;
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.accent = accent;
+  }, [accent]);
 
   if (isLoading) {
     return (

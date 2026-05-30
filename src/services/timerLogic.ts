@@ -1,4 +1,5 @@
 import type { AfterFinalCycleBehavior, SessionMode, SessionTimerSnapshot, TimerPhase } from "../types/timer";
+import { formatMinutes } from "../utils/formatTime";
 
 export type StartTimerInput = {
   activeSessionId: string;
@@ -215,9 +216,6 @@ export function formatSessionPlanSummary(input: {
   const betweenBreaks = Math.max(0, cycles - 1) * input.breakMinutes;
   const longBreak = input.afterFinalCycleBehavior === "long_break" ? input.longBreakMinutes : 0;
   const total = focusTotal + betweenBreaks + longBreak;
-  const hours = Math.floor(total / 60);
-  const minutes = total % 60;
-  const totalLabel = hours ? `${hours}h${minutes ? ` ${minutes}m` : ""}` : `${minutes}m`;
   const breakLabel = longBreak ? `${betweenBreaks} min break + ${longBreak} min long break` : `${betweenBreaks} min break`;
-  return `${cycles} focus cycles · ${focusTotal} min focus · ${breakLabel} · about ${totalLabel} total`;
+  return `${cycles} focus cycles · ${formatMinutes(focusTotal)} focus · ${breakLabel} · about ${formatMinutes(total)} total`;
 }

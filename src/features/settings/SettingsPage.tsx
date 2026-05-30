@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { useAppStore } from "../../store/appStore";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
@@ -9,9 +9,10 @@ import { POMODORO_PRESETS, getDefaultPomodoroId, setDefaultPomodoro, getPractice
 import { differenceInCalendarDays } from "date-fns";
 import { buildQuestionsFile, parsePracticeFile, saveTextFile, openTextFile, practiceFileName } from "../../services/practiceSyncService";
 import { confirmDialog, toast } from "../../store/uiStore";
+import { ACCENT_PRESETS } from "../../services/accentPresets";
 
 export function SettingsPage() {
-  const { theme, setTheme, resetAll, exportPracticeQuestions, mergePracticeAttempts } = useAppStore();
+  const { theme, setTheme, accent, setAccent, resetAll, exportPracticeQuestions, mergePracticeAttempts } = useAppStore();
   const timer = useSessionTimerStore();
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [volume, setVolumeState] = useState(() => getVolume());
@@ -167,6 +168,24 @@ export function SettingsPage() {
               <option value="system">System</option>
             </select>
           </label>
+          <div className="field">
+            <span>Accent color</span>
+            <div className="accent-swatches" role="radiogroup" aria-label="Accent color">
+              {ACCENT_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`accent-swatch${accent === preset.id ? " selected" : ""}`}
+                  style={{ "--swatch": preset.swatch } as CSSProperties}
+                  role="radio"
+                  aria-checked={accent === preset.id}
+                  aria-label={preset.label}
+                  title={preset.label}
+                  onClick={() => setAccent(preset.id)}
+                />
+              ))}
+            </div>
+          </div>
           <label className="field">
             <span>Default Pomodoro</span>
             <select className="select" value={pomodoroPreset} onChange={(event) => handlePomodoroChange(event.target.value as PomodoroPresetId)}>

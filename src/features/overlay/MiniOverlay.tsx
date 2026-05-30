@@ -77,10 +77,11 @@ export function MiniOverlay() {
       const theme = localStorage.getItem("study-hub-theme") ?? "warm-dark";
       const resolved = theme === "system" ? (media.matches ? "soft-light" : "warm-dark") : theme;
       document.documentElement.dataset.theme = resolved;
+      document.documentElement.dataset.accent = localStorage.getItem("study-hub-accent") ?? "teal";
     }
     apply();
     function onStorage(event: StorageEvent) {
-      if (event.key === "study-hub-theme") apply();
+      if (event.key === "study-hub-theme" || event.key === "study-hub-accent") apply();
     }
     window.addEventListener("storage", onStorage);
     media.addEventListener("change", apply);

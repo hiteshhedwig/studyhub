@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { format, parseISO } from "date-fns";
 import type { HeatmapCell } from "../../services/statsService";
 import type { StudySession } from "../../db/repositories/types";
+import { formatMinutes } from "../../utils/formatTime";
+
+// A day with 8h+ (480m) of focus is celebrated with a golden cell, sitting
+// above the normal 0–4 intensity ramp regardless of the chosen accent.
+const GOLD_THRESHOLD_MINUTES = 480;
 
 // Sparse weekday labels (Sun→Sat rows), GitHub shows Mon/Wed/Fri.
 const DAY_LABELS = ["", "Mon", "", "Wed", "", "Fri", ""];
@@ -11,7 +16,7 @@ type Selected = { x: number; y: number; cell: HeatmapCell };
 
 function tooltipText(cell: HeatmapCell): string {
   const date = format(cell.date, "EEEE, MMM d, yyyy");
-  return cell.minutes === 0 ? `No focus on ${date}` : `${cell.minutes}m focused on ${date}`;
+  return cell.minutes === 0 ? `No focus on ${date}` : `${formatMinutes(cell.minutes)} focused on ${date}`;
 }
 
 function sessionMinutes(session: StudySession): number {
@@ -68,11 +73,13 @@ export function FocusHeatmap({ data, sessions = [] }: { data: HeatmapCell[][]; s
   return (
     <div className="heatmap">
       <div className="heatmap-meta muted">
-        <span>{activeDays} active day{activeDays === 1 ? "" : "s"} · {totalMinutes}m total in the last year</span>
+        <span>{activeDays} active day{activeDays === 1 ? "" : "s"} · {formatMinutes(totalMinutes)} total in the last year</span>
         <div className="heatmap-legend" aria-hidden="true">
           <span>Less</span>
           {[0, 1, 2, 3, 4].map((b) => <span key={b} className={`heatmap-cell legend h${b}`} />)}
           <span>More</span>
+          <span className="heatmap-cell legend gold" />
+          <span>8h+</span>
         </div>
       </div>
       <div className="heatmap-grid">
@@ -88,7 +95,7 @@ export function FocusHeatmap({ data, sessions = [] }: { data: HeatmapCell[][]; s
               {week.map((cell) => (
                 <span
                   key={cell.date.toISOString()}
-                  className={`heatmap-cell h${cell.bucket}`}
+                  className={`heatmap-cell h${cell.bucket}${cell.minutes >= GOLD_THRESHOLD_MINUTES ? " gold" : ""}`}
                   aria-label={tooltipText(cell)}
                   onMouseEnter={(event) => showTooltip(event, cell)}
                   onMouseMove={(event) => showTooltip(event, cell)}
@@ -116,13 +123,13 @@ export function FocusHeatmap({ data, sessions = [] }: { data: HeatmapCell[][]; s
             <p className="heatmap-popover-date">{format(selected.cell.date, "EEEE, MMM d, yyyy")}</p>
             {daySessions.length ? (
               <>
-                <p className="heatmap-popover-total muted">{selected.cell.minutes}m focused · {daySessions.length} session{daySessions.length === 1 ? "" : "s"}</p>
+                <p className="heatmap-popover-total muted">{formatMinutes(selected.cell.minutes)} focused · {daySessions.length} session{daySessions.length === 1 ? "" : "s"}</p>
                 <ul className="heatmap-popover-list">
                   {daySessions.map((session) => (
                     <li key={session.id}>
                       <span className="heatmap-popover-time">{format(parseISO(session.started_at), "h:mm a")}</span>
                       <span className="heatmap-popover-title">{session.title}</span>
-                      <span className="heatmap-popover-min muted">{sessionMinutes(session)}m</span>
+                      <span className="heatmap-popover-min muted">{formatMinutes(sessionMinutes(session))}</span>
                     </li>
                   ))}
                 </ul>

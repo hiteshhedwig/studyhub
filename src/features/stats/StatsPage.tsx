@@ -5,6 +5,7 @@ import { StudyTimeChart } from "../../components/charts/StudyTimeChart";
 import { RevisionHistoryTimeline, summarizeRevisions } from "../../components/ui/RevisionHistoryTimeline";
 import { useAppStore } from "../../store/appStore";
 import { dailyStudySeries, rankedTopics, recallAccuracy, revisionCompletionRate } from "../../services/statsService";
+import { formatMinutes } from "../../utils/formatTime";
 import type { RevisionSchedule } from "../../db/repositories/types";
 
 export function StatsPage() {
@@ -55,7 +56,7 @@ export function StatsPage() {
     <>
       <PageHeader title="Stats" eyebrow="Study signals without noise or achievement theater." />
       <section className="grid three">
-        <div className="card stat"><span className="muted">Total focus</span><strong>{totalMinutes}m</strong></div>
+        <div className="card stat"><span className="muted">Total focus</span><strong>{formatMinutes(totalMinutes)}</strong></div>
         <div className="card stat"><span className="muted">Pomodoros</span><strong>{pomodoros}</strong></div>
         <div className="card stat"><span className="muted">Recall accuracy</span><strong>{recallAccuracy(questions)}%</strong></div>
         <div className="card stat"><span className="muted">Revision completion</span><strong>{revisionCompletionRate(revisions)}%</strong></div>
@@ -110,7 +111,7 @@ export function StatsPage() {
                 <div className="list-item" key={entry.id}>
                   <div className="split">
                     <span className="truncate" title={entry.title}>{entry.title}</span>
-                    <span>{entry.minutes}m</span>
+                    <span>{formatMinutes(entry.minutes)}</span>
                   </div>
                 </div>
               ))}

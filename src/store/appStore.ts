@@ -35,16 +35,19 @@ import {
 } from "../db/repositories/studyRepository";
 import type { Question, ReviewRating, StudySession, Topic } from "../db/repositories/types";
 import type { QuestionImport } from "../services/importQuestions";
+import { DEFAULT_ACCENT, isAccentId, type AccentId } from "../services/accentPresets";
 
 type ThemePreference = "warm-dark" | "soft-light" | "system";
 
 type AppState = DashboardData & {
   activeSession: StudySession | null;
   theme: ThemePreference;
+  accent: AccentId;
   isLoading: boolean;
   error: string | null;
   load: () => Promise<void>;
   setTheme: (theme: ThemePreference) => void;
+  setAccent: (accent: AccentId) => void;
   createCategory: typeof createCategory;
   createTopic: typeof createTopic;
   updateTopic: typeof updateTopic;
@@ -107,6 +110,10 @@ export const useAppStore = create<AppState>((set) => ({
   ...emptyData,
   activeSession: null,
   theme: (localStorage.getItem("study-hub-theme") as ThemePreference | null) ?? "warm-dark",
+  accent: (() => {
+    const stored = localStorage.getItem("study-hub-accent");
+    return isAccentId(stored) ? stored : DEFAULT_ACCENT;
+  })(),
   isLoading: true,
   error: null,
   load: async () => {
@@ -119,6 +126,10 @@ export const useAppStore = create<AppState>((set) => ({
   setTheme: (theme) => {
     localStorage.setItem("study-hub-theme", theme);
     set({ theme });
+  },
+  setAccent: (accent) => {
+    localStorage.setItem("study-hub-accent", accent);
+    set({ accent });
   },
   createCategory: wrap(set, createCategory),
   createTopic: wrap(set, createTopic),

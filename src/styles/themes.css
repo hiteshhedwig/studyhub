@@ -2,19 +2,23 @@
 [data-theme="warm-dark"] {
   --background: #0d1117;
   --background-accent: radial-gradient(1200px 600px at 80% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%);
-  --surface: #161c25;
-  --surface-raised: #1d2530;
-  --surface-soft: #1a212b;
-  --surface-inset: #11161d;
+  --surface: #151d26;
+  --surface-raised: #202a36;
+  --surface-soft: #19222c;
+  --surface-inset: #0f151c;
   --text-primary: #e7eef6;
-  --text-secondary: #9aa8b7;
-  --muted: #6a7888;
-  --border: #232c38;
-  --border-strong: #303b49;
-  --accent: #2dd4bf;
-  --accent-strong: #14b8a6;
-  --accent-contrast: #04211d;
+  --text-secondary: #a3b1c0;
+  --muted: #748395;
+  --border: #263241;
+  --border-strong: #384656;
+  --accent: #46b6a6;
+  --accent-strong: #34998a;
+  --accent-contrast: #041f1c;
   --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --gold: #d8a838;
+  --gold-strong: #b9862a;
+  --gold-contrast: #2a1e05;
+  --gold-glow: color-mix(in srgb, var(--gold) 50%, transparent);
   --success: #5cc08a;
   --warning: #e0b257;
   --danger: #ef7a72;
@@ -28,24 +32,28 @@
 }
 
 [data-theme="soft-light"] {
-  --background: #eef1f6;
+  --background: #f1f4f8;
   --background-accent: radial-gradient(1200px 600px at 80% -10%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%);
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-soft: #f3f6fa;
-  --surface-inset: #eaeef4;
+  --surface-soft: #f6f8fb;
+  --surface-inset: #e8edf4;
   --text-primary: #18212c;
-  --text-secondary: #56636f;
-  --muted: #8593a1;
-  --border: #e2e8ef;
-  --border-strong: #d2dbe4;
-  --accent: #0d9488;
-  --accent-strong: #0f766e;
+  --text-secondary: #4f5f6f;
+  --muted: #667586;
+  --border: #dce4ed;
+  --border-strong: #c7d2dd;
+  --accent: #0b7f75;
+  --accent-strong: #086e66;
   --accent-contrast: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 9%, transparent);
+  --gold: #a87318;
+  --gold-strong: #8d5f12;
+  --gold-contrast: #ffffff;
+  --gold-glow: color-mix(in srgb, var(--gold) 38%, transparent);
   --success: #2f8f63;
-  --warning: #b9842b;
-  --danger: #d65a52;
+  --warning: #a87318;
+  --danger: #c94f48;
 
   --shadow-sm: 0 1px 2px rgba(24, 33, 44, 0.06), 0 1px 1px rgba(24, 33, 44, 0.04);
   --shadow-md: 0 10px 28px rgba(24, 33, 44, 0.1);

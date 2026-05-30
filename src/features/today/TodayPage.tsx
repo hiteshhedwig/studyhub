@@ -21,13 +21,7 @@ import { useTimerSounds } from "../../hooks/useTimerSounds";
 import { getDefaultPomodoro, POMODORO_PRESETS, getActiveExamDate } from "../../services/preferencesService";
 import { confirmDialog, toast } from "../../store/uiStore";
 import type { AfterFinalCycleBehavior, SessionMode } from "../../types/timer";
-
-function formatMinutes(total: number) {
-  if (total < 60) return `${total}m`;
-  const hours = Math.floor(total / 60);
-  const minutes = total % 60;
-  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
-}
+import { formatMinutes } from "../../utils/formatTime";
 
 function statusLabel(timer: { phase: string; awaitingFinalChoice: boolean; awaitingNextPhase: string | null }) {
   if (timer.awaitingFinalChoice) return "Cycle complete";
