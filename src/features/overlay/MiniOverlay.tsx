@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { appWindow, WebviewWindow } from "@tauri-apps/api/window";
 import { rememberMiniOverlayPosition, resizeMiniOverlay } from "../../services/overlayWindowService";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
@@ -31,9 +31,30 @@ function nextActionLabel(next: string) {
   return "Finish";
 }
 
+const PAUSE_BREATHE_AFTER_MS = 10_000;
+
 export function MiniOverlay() {
   const timer = useSessionTimerStore();
   const progress = progressPercent(timer);
+
+  // Breathe a red glow once the timer has been sitting paused for a while, so a
+  // forgotten pause stands out. refreshDisplay is a no-op while paused, so this
+  // owns its own timeout rather than riding the tick interval.
+  const [pausedLong, setPausedLong] = useState(false);
+  useEffect(() => {
+    if (timer.phase !== "paused" || !timer.pausedAt) {
+      setPausedLong(false);
+      return;
+    }
+    const elapsed = Date.now() - timer.pausedAt;
+    if (elapsed >= PAUSE_BREATHE_AFTER_MS) {
+      setPausedLong(true);
+      return;
+    }
+    setPausedLong(false);
+    const id = window.setTimeout(() => setPausedLong(true), PAUSE_BREATHE_AFTER_MS - elapsed);
+    return () => window.clearTimeout(id);
+  }, [timer.phase, timer.pausedAt]);
 
   useEffect(() => {
     const id = window.setInterval(() => timer.refreshDisplay(), 500);
@@ -133,7 +154,7 @@ export function MiniOverlay() {
 
   if (timer.isCollapsed) {
     return (
-      <div className="mini-overlay collapsed">
+      <div className={`mini-overlay collapsed${pausedLong ? " paused-breathing" : ""}`}>
         <button className="overlay-collapsed-content" type="button" onClick={toggleCollapsed}>
           <span className={`phase-dot ${timer.phase}`} aria-hidden="true" />
           <span>{phaseLabel(timer.phase, timer.awaitingFinalChoice, timer.awaitingNextPhase)}</span>
@@ -146,7 +167,7 @@ export function MiniOverlay() {
   }
 
   return (
-    <div className="mini-overlay expanded">
+    <div className={`mini-overlay expanded${pausedLong ? " paused-breathing" : ""}`}>
       <div className="overlay-topline" onMouseDown={startDragging}>
         <div>
           <span>{timer.topicTitle || "Study Hub"}</span>

@@ -25,6 +25,41 @@
   border-radius: 20px;
 }
 
+/* After a timer has sat paused for a while, the overlay breathes a slow red
+   glow so a forgotten pause is easy to notice at a glance. */
+@keyframes overlay-pause-breathe {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.035),
+      0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--danger) 85%, transparent);
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.035),
+      0 0 20px 2px color-mix(in srgb, var(--danger) 50%, transparent);
+  }
+}
+
+.mini-overlay.paused-breathing {
+  animation: overlay-pause-breathe 3.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No pulsing — keep a steady red edge as the paused cue instead. */
+  .mini-overlay.paused-breathing {
+    animation: none;
+    border-color: color-mix(in srgb, var(--danger) 70%, transparent);
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.035),
+      0 0 16px 1px color-mix(in srgb, var(--danger) 40%, transparent);
+  }
+}
+
 .mini-overlay.collapsed {
   display: flex;
   align-items: center;
