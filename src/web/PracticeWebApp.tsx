@@ -28,18 +28,35 @@ function shuffleWithSeed<T>(items: T[], seed: number): T[] {
 export function PracticeWebApp() {
   const { questions, attempts, examDate, load, record } = usePracticeStore();
   const [mode, setMode] = useState<"due" | "all">("due");
+  const [topicId, setTopicId] = useState("");
   const [seed, setSeed] = useState(() => Date.now());
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [answer, setAnswer] = useState("");
   const [startedAt, setStartedAt] = useState(Date.now());
 
+  // Distinct topics present in the loaded set, for the topic filter dropdown.
+  const topics = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const q of questions) {
+      if (q.topic_id && !byId.has(q.topic_id)) byId.set(q.topic_id, q.topic_title || "Untitled topic");
+    }
+    return [...byId.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [questions]);
+
+  // A topic that no longer exists after loading a new file shouldn't strand the
+  // pool on an empty filter — fall back to all topics.
+  useEffect(() => {
+    if (topicId && !topics.some(([id]) => id === topicId)) setTopicId("");
+  }, [topics, topicId]);
+
   const pool = useMemo(() => {
     if (questions.length === 0) return [];
     const exam = examDate ? parseISO(examDate) : null;
-    const list = mode === "due" ? questions.filter((q) => isQuestionDue(q, exam)) : questions;
+    let list = topicId ? questions.filter((q) => q.topic_id === topicId) : questions;
+    if (mode === "due") list = list.filter((q) => isQuestionDue(q, exam));
     return shuffleWithSeed(list, seed);
-  }, [questions, mode, examDate, seed]);
+  }, [questions, mode, topicId, examDate, seed]);
 
   const current = pool.length ? pool[index % pool.length] : undefined;
   const currentId = current?.id;
@@ -109,6 +126,17 @@ export function PracticeWebApp() {
           <button className={`btn small ${mode === "due" ? "primary" : ""}`} type="button" onClick={() => { setMode("due"); setIndex(0); }}>Due</button>
           <button className={`btn small ${mode === "all" ? "primary" : ""}`} type="button" onClick={() => { setMode("all"); setIndex(0); }}>All</button>
           <button className="btn small" type="button" onClick={() => { setSeed(Date.now()); setIndex(0); }} title="Reshuffle">Shuffle</button>
+          {topics.length > 1 ? (
+            <select
+              className="select pw-topic"
+              value={topicId}
+              onChange={(event) => { setTopicId(event.target.value); setIndex(0); setSeed(Date.now()); }}
+              aria-label="Filter by topic"
+            >
+              <option value="">All topics</option>
+              {topics.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+            </select>
+          ) : null}
         </div>
 
         {current ? (
