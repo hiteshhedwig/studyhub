@@ -126,12 +126,19 @@ function startPhase(snapshot: SessionTimerSnapshot, phase: TimerPhase, seconds: 
 // `awaitingNextPhase` rather than starting it. The UI then asks the user to
 // confirm. The "ask" final-cycle flow keeps its own dedicated buttons via
 // `awaitingFinalChoice`.
-export function completeCurrentPhase(snapshot: SessionTimerSnapshot, _now = Date.now()): SessionTimerSnapshot {
+export function completeCurrentPhase(
+  snapshot: SessionTimerSnapshot,
+  options: { countFocusCycle?: boolean } = {}
+): SessionTimerSnapshot {
   if (!snapshot.activeSessionId) return snapshot;
+  // A focus cycle counts as a finished pomodoro only when the phase actually ran
+  // its course. Skipping a focus block advances the session but must NOT bank a
+  // cycle — otherwise the skipped (mostly-unspent) focus minutes inflate stats.
+  const countFocusCycle = options.countFocusCycle ?? true;
   const stopped = { ...snapshot, remainingSeconds: 0, phaseStartedAt: null, isRunning: false };
 
   if (snapshot.phase === "focus") {
-    const completed = snapshot.completedFocusCycles + 1;
+    const completed = countFocusCycle ? snapshot.completedFocusCycles + 1 : snapshot.completedFocusCycles;
     const isFinalPlannedCycle = snapshot.sessionMode === "planned" && snapshot.currentCycle >= snapshot.plannedCycles;
     const base = { ...stopped, completedFocusCycles: completed };
     if (isFinalPlannedCycle) {

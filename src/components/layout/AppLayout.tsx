@@ -11,7 +11,7 @@ const navGroups = [
     items: [
       { to: "/", label: "Today", icon: Home },
       { to: "/sessions", label: "Sessions", icon: TimerReset },
-      { to: "/revisions", label: "Revisions", icon: CalendarClock },
+      { to: "/revisions", label: "Topic Reviews", icon: CalendarClock },
       { to: "/practice", label: "Practice", icon: CheckCircle2 }
     ]
   },

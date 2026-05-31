@@ -84,6 +84,13 @@ export function TodayPage() {
   const examDate = getActiveExamDate();
   const examDaysAway = examDate ? differenceInCalendarDays(examDate, new Date()) : null;
   const dueQuestions = store.questions.filter((question) => isQuestionDue(question, examDate));
+  // Soonest future due date among already-seen cards — shown when nothing is due
+  // now, so "0 cards due" reads as "come back on Jun 3" rather than a dead end.
+  const nextQuestionDueAt = store.questions
+    .filter((question) => question.review_count > 0)
+    .map((question) => parseISO(question.next_due_at))
+    .filter((date) => date.getTime() > Date.now())
+    .sort((a, b) => a.getTime() - b.getTime())[0];
   const todayMinutes = todaySessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
   const pomodoros = todaySessions.reduce((sum, session) => sum + session.pomodoros_completed, 0);
   const streak = currentFocusStreak(store.sessions);
@@ -484,6 +491,8 @@ export function TodayPage() {
               <h2>Due today</h2>
               {dueRevisions.length || lateRevisions.length || dueQuestions.length ? (
                 <>
+                  {/* Topic reviews — "this topic needs a recall check", links to /revisions */}
+                  <p className="eyebrow" style={{ margin: 0 }}>Topic reviews</p>
                   {lateRevisions.length ? (
                     <>
                       <p className="muted" style={{ margin: 0, color: "var(--danger)" }}>{lateRevisions.length} late · catch these first</p>
@@ -514,14 +523,27 @@ export function TodayPage() {
                       </div>
                     </>
                   ) : null}
+                  {!lateRevisions.length && !dueRevisions.length ? (
+                    <p className="muted" style={{ margin: 0 }}>No topic reviews due.</p>
+                  ) : null}
+
+                  {/* Flashcards — individual spaced-repetition cards, links to /practice */}
+                  <p className="eyebrow" style={{ margin: "8px 0 0" }}>Flashcards</p>
                   {dueQuestions.length ? (
                     <Link to="/practice" className="list-item" style={{ textDecoration: "none", color: "inherit" }}>
                       <div className="split">
-                        <span><strong>{dueQuestions.length}</strong> question{dueQuestions.length === 1 ? "" : "s"} ready to practice</span>
+                        <span><strong>{dueQuestions.length}</strong> card{dueQuestions.length === 1 ? "" : "s"} ready to practice</span>
                         <ChevronRight size={16} />
                       </div>
                     </Link>
-                  ) : null}
+                  ) : (
+                    <div className="list-item">
+                      <div className="split">
+                        <span className="muted">0 cards due{nextQuestionDueAt ? ` · next ${format(nextQuestionDueAt, "MMM d")}` : ""}</span>
+                        <Link to="/practice" className="muted" style={{ whiteSpace: "nowrap" }}>Practice anyway</Link>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : <EmptyState>Nothing is due. A good day for one careful session or a light review.</EmptyState>}
               {recentTopics.length ? (

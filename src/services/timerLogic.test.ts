@@ -47,7 +47,7 @@ describe("timer logic", () => {
 
   it("queues the break after focus and starts it on confirmation", () => {
     const snapshot = createSessionTimer(baseInput);
-    const ended = completeCurrentPhase(snapshot, 1_801_000);
+    const ended = completeCurrentPhase(snapshot);
     expect(ended.phase).toBe("focus");
     expect(ended.isRunning).toBe(false);
     expect(ended.awaitingNextPhase).toBe("break");
@@ -61,12 +61,20 @@ describe("timer logic", () => {
     expect(started.awaitingNextPhase).toBeNull();
   });
 
+  it("does not bank a focus cycle when the focus phase is skipped", () => {
+    const snapshot = createSessionTimer(baseInput);
+    // Skip = complete the phase without counting it (how skipPhase calls it).
+    const skipped = completeCurrentPhase(snapshot, { countFocusCycle: false });
+    expect(skipped.completedFocusCycles).toBe(0); // no inflated pomodoro
+    expect(skipped.awaitingNextPhase).toBe("break"); // still advances the session
+  });
+
   it("asks after the final planned cycle, then can continue or take long break", () => {
-    const focusOneEnd = completeCurrentPhase(createSessionTimer(baseInput), 1_801_000);
+    const focusOneEnd = completeCurrentPhase(createSessionTimer(baseInput));
     const breakOne = confirmNextPhase(focusOneEnd, 1_802_000);
-    const breakOneEnd = completeCurrentPhase(breakOne, 2_402_000);
+    const breakOneEnd = completeCurrentPhase(breakOne);
     const focusTwo = confirmNextPhase(breakOneEnd, 2_403_000);
-    const focusTwoEnd = completeCurrentPhase(focusTwo, 4_203_000);
+    const focusTwoEnd = completeCurrentPhase(focusTwo);
     expect(focusTwoEnd.awaitingFinalChoice).toBe(true);
     expect(focusTwoEnd.phase).toBe("paused");
     expect(continueAnotherCycle(focusTwoEnd, 4_204_000).currentCycle).toBe(3);

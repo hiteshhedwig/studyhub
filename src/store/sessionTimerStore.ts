@@ -184,8 +184,9 @@ export const useSessionTimerStore = create<TimerState>((set, get) => ({
       return;
     }
     const activeSnapshot = snapshot.phase === "paused" && snapshot.previousPhase ? { ...snapshot, phase: snapshot.previousPhase, isRunning: true } : snapshot;
-    // Skip jumps straight to the next phase (no waiting on confirmation).
-    setAndPersist(set, get, confirmNextPhase(completeCurrentPhase(activeSnapshot)));
+    // Skip jumps straight to the next phase. A skipped focus block does not count
+    // as a completed pomodoro, so it never adds to recorded focus hours.
+    setAndPersist(set, get, confirmNextPhase(completeCurrentPhase(activeSnapshot, { countFocusCycle: false })));
   },
   endTimer: () => setAndPersist(set, get, completeSessionSnapshot(snapshotFromState(get()))),
   confirmNextPhase: () => setAndPersist(set, get, confirmNextPhase(snapshotFromState(get()))),

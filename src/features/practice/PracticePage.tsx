@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bookmark, BookmarkCheck, Sparkles } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Bookmark, BookmarkCheck, CheckCircle2, Sparkles, X } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RatingButtons } from "../../components/ui/RatingButtons";
 import { RichText } from "../../components/ui/RichText";
 import { AiEvalCard } from "../../components/ui/AiEvalCard";
 import { getPracticeShortcutsEnabled, getAiEvalConfig, getActiveExamDate } from "../../services/preferencesService";
-import { isQuestionDue } from "../../services/spacedRepetition";
+import { aggregateReviewRating, buildTopicReviewSet, isQuestionDue } from "../../services/spacedRepetition";
 import { evaluateAnswer, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
 import { useAppStore } from "../../store/appStore";
+import type { Question, ReviewRating } from "../../db/repositories/types";
 import { toast } from "../../store/uiStore";
 
 type Mode = "due" | "topic" | "weak" | "random" | "bookmarked";
@@ -56,6 +58,31 @@ export function PracticePage() {
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
   const aiAvailable = aiConfig.enabled && Boolean(aiConfig.apiKey);
 
+  // Topic-review entry: /practice?topic=<id>&review=<revisionId>. A review is a
+  // frozen, recall-first set for one topic that, when finished, closes the due
+  // topic review. The set is snapshotted on entry so rating a card doesn't
+  // reshuffle or shrink the queue mid-session.
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const reviewTopicId = params.get("topic");
+  const reviewId = params.get("review");
+  const reviewActive = Boolean(reviewTopicId);
+  const [reviewPool, setReviewPool] = useState<Question[]>([]);
+  const [reviewRatings, setReviewRatings] = useState<ReviewRating[]>([]);
+  const reviewTopicTitle = store.topics.find((topic) => topic.id === reviewTopicId)?.title ?? "Topic";
+
+  useEffect(() => {
+    if (!reviewTopicId) {
+      setReviewPool([]);
+      setReviewRatings([]);
+      return;
+    }
+    const snapshot = useAppStore.getState().questions;
+    setReviewPool(buildTopicReviewSet(snapshot, reviewTopicId, getActiveExamDate()));
+    setReviewRatings([]);
+    setIndex(0);
+  }, [reviewTopicId, reviewId]);
+
   const pool = useMemo(() => {
     if (mode === "due") {
       // Due = never reviewed, scheduled for today/earlier, or pulled in by exam mode
@@ -77,7 +104,9 @@ export function PracticePage() {
     return shuffleWithSeed(store.questions, shuffleSeed);
   }, [store.questions, mode, topicId, topicOrder, shuffleSeed]);
 
-  const current = pool[index % Math.max(pool.length, 1)];
+  // In a review the queue is finite and ordered (no modulo) so it can run out
+  // and surface the completion panel; normal modes loop with modulo.
+  const current = reviewActive ? reviewPool[index] : pool[index % Math.max(pool.length, 1)];
 
   // Reset transient state when the active question changes (e.g., mode switch,
   // topic switch, pool changes). Without this, the stale "revealed" / answer
@@ -107,7 +136,21 @@ export function PracticePage() {
   async function rate(rating: "forgot" | "hard" | "good" | "easy") {
     if (!current) return;
     await store.recordReview({ question: current, rating, userAnswer: answer, seconds: Math.round((Date.now() - startedAt) / 1000) });
+    if (reviewActive) setReviewRatings((previous) => [...previous, rating]);
     setIndex((value) => value + 1);
+  }
+
+  // One-tap confirm after recall: closes the due topic review, logging the
+  // session's worst card rating for history (topic intervals stay fixed).
+  async function confirmReview() {
+    if (!reviewId) return;
+    await store.completeRevision(reviewId, aggregateReviewRating(reviewRatings));
+    toast.success(`Marked “${reviewTopicTitle}” reviewed`);
+    navigate("/revisions");
+  }
+
+  function exitReview() {
+    navigate("/practice");
   }
 
   function skipForward() {
@@ -158,6 +201,22 @@ export function PracticePage() {
   return (
     <>
       <PageHeader title="Practice" eyebrow="Active recall first, answer second, rating last." />
+      {reviewActive ? (
+        <div className="card split" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <span className="eyebrow">Topic review</span>
+            <strong style={{ display: "block" }}>{reviewTopicTitle}</strong>
+            <p className="muted" style={{ margin: 0 }}>Recall from memory first — rate each card honestly, then mark the review done.</p>
+          </div>
+          <div className="button-row" style={{ alignItems: "center" }}>
+            <span className="muted" style={{ fontSize: "var(--text-xs)" }}>{Math.min(index, reviewPool.length)} / {reviewPool.length} recalled</span>
+            <button className="btn primary" type="button" onClick={() => void confirmReview()} disabled={reviewRatings.length === 0} title={reviewRatings.length === 0 ? "Recall at least one card first" : "Mark this topic review complete"}>
+              <CheckCircle2 size={16} /> Mark reviewed
+            </button>
+            <button className="btn" type="button" onClick={exitReview} title="Leave without completing the review"><X size={16} /> Exit</button>
+          </div>
+        </div>
+      ) : (
       <div className="card button-row" style={{ flexWrap: "wrap" }}>
         {(Object.keys(MODE_LABELS) as Mode[]).map((item) => (
           <button
@@ -204,6 +263,7 @@ export function PracticePage() {
           {shortcutsEnabled ? "Space: reveal · → / N: next · 1-4: rate · ?: all shortcuts" : "Practice shortcuts off — enable in Settings"}
         </span>
       </div>
+      )}
       <section className="card raised" style={{ marginTop: 20 }}>
         {current ? (
           <div className="grid">
@@ -220,7 +280,7 @@ export function PracticePage() {
                   {current.bookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
                   {current.bookmarked ? "Bookmarked" : "Bookmark"}
                 </button>
-                <span className="muted">{(index % pool.length) + 1} / {pool.length}</span>
+                <span className="muted">{reviewActive ? index + 1 : (index % pool.length) + 1} / {reviewActive ? reviewPool.length : pool.length}</span>
               </span>
             </div>
             <RichText className="prompt">{current.question}</RichText>
@@ -255,6 +315,22 @@ export function PracticePage() {
                 <RatingButtons onRate={rate} suggested={evalState.status === "done" && evalState.result ? recallGradeToRating(evalState.result.recall_grade) : undefined} />
               </>
             )}
+          </div>
+        ) : reviewActive ? (
+          <div className="grid" style={{ justifyItems: "center", textAlign: "center", gap: 14, padding: "12px 0" }}>
+            <CheckCircle2 size={40} style={{ color: "var(--accent)" }} aria-hidden="true" />
+            <div>
+              <h3 style={{ margin: 0 }}>{reviewPool.length ? "Recall complete" : "No questions in this topic yet"}</h3>
+              <p className="muted" style={{ margin: "6px 0 0" }}>
+                {reviewPool.length
+                  ? `You recalled ${reviewRatings.length} of ${reviewPool.length} card${reviewPool.length === 1 ? "" : "s"} for ${reviewTopicTitle}.`
+                  : `There's nothing to recall for ${reviewTopicTitle}. You can still mark the review done or add questions first.`}
+              </p>
+            </div>
+            <div className="button-row">
+              <button className="btn primary" type="button" onClick={() => void confirmReview()}><CheckCircle2 size={16} /> Mark reviewed</button>
+              <button className="btn" type="button" onClick={exitReview}>Exit without completing</button>
+            </div>
           </div>
         ) : <EmptyState>No questions are ready for this mode. Import a Q&A set or choose another practice mode.</EmptyState>}
       </section>

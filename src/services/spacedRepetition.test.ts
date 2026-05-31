@@ -1,6 +1,6 @@
 import { addDays } from "date-fns";
 import { describe, expect, it } from "vitest";
-import { calculateQuestionReview, createTopicRevisionDates, isQuestionDue } from "./spacedRepetition";
+import { aggregateReviewRating, buildTopicReviewSet, calculateQuestionReview, createTopicRevisionDates, isQuestionDue } from "./spacedRepetition";
 
 describe("spaced repetition", () => {
   const reviewedAt = new Date("2026-05-25T10:00:00.000Z");
@@ -95,6 +95,56 @@ describe("spaced repetition", () => {
     it("on exam day a card reviewed today is not due again immediately", () => {
       // lastReviewed today + gapCap 1 = tomorrow → not yet due
       expect(isQuestionDue(reviewed(0, 30), now, now)).toBe(false);
+    });
+  });
+
+  describe("buildTopicReviewSet", () => {
+    const now = new Date("2026-05-25T10:00:00.000Z");
+    const q = (id: string, topic_id: string, opts: { due?: boolean; mastery?: number; daysAgo?: number; never?: boolean } = {}) => ({
+      id,
+      topic_id,
+      mastery_score: opts.mastery ?? 50,
+      review_count: opts.never ? 0 : 3,
+      last_reviewed_at: opts.never ? null : addDays(now, -(opts.daysAgo ?? 1)).toISOString(),
+      next_due_at: addDays(now, opts.due ? -1 : 30).toISOString()
+    });
+
+    it("only includes the requested topic", () => {
+      const set = buildTopicReviewSet([q("a", "t1"), q("b", "t2", { due: true })], "t1", null, now);
+      expect(set.map((x) => x.id)).toEqual(["a"]);
+    });
+
+    it("puts due cards first, then weakest, then oldest-seen", () => {
+      const set = buildTopicReviewSet(
+        [
+          q("strong", "t1", { mastery: 90, daysAgo: 1 }),
+          q("weak", "t1", { mastery: 10, daysAgo: 1 }),
+          q("due", "t1", { due: true }),
+          q("oldSameMastery", "t1", { mastery: 90, daysAgo: 40 })
+        ],
+        "t1",
+        null,
+        now
+      );
+      // due leads; then weak (mastery 10); then the two mastery-90 by oldest-seen
+      expect(set.map((x) => x.id)).toEqual(["due", "weak", "oldSameMastery", "strong"]);
+    });
+
+    it("caps the set size", () => {
+      const many = Array.from({ length: 20 }, (_, i) => q(`q${i}`, "t1", { mastery: i }));
+      expect(buildTopicReviewSet(many, "t1", null, now, 12)).toHaveLength(12);
+    });
+  });
+
+  describe("aggregateReviewRating", () => {
+    it("worst card wins", () => {
+      expect(aggregateReviewRating(["good", "forgot", "easy"])).toBe("forgot");
+      expect(aggregateReviewRating(["good", "hard", "easy"])).toBe("hard");
+    });
+    it("all-easy stays easy, mixed-good is good, empty is good", () => {
+      expect(aggregateReviewRating(["easy", "easy"])).toBe("easy");
+      expect(aggregateReviewRating(["good", "easy"])).toBe("good");
+      expect(aggregateReviewRating([])).toBe("good");
     });
   });
 

@@ -109,6 +109,56 @@ export function isQuestionDue(question: DueQuestion, targetDate: Date | null, no
   return differenceInCalendarDays(effectiveDue, now) <= 0;
 }
 
+/** Default size of a topic-review recall set — a quick check, not the whole bank. */
+export const TOPIC_REVIEW_SIZE = 12;
+
+type ReviewSetQuestion = DueQuestion & { id: string; topic_id: string; mastery_score: number };
+
+function lastReviewedMs(question: ReviewSetQuestion): number {
+  // Never-seen sort oldest-first (0) so they lead the "oldest seen" tail.
+  return question.last_reviewed_at ? parseISO(question.last_reviewed_at).getTime() : 0;
+}
+
+/**
+ * Builds the recall set for a topic review: due cards first (the questions that
+ * genuinely need active recall now), then the weakest by mastery, then the
+ * oldest-seen — capped at `cap` so a review stays a quick memory check rather
+ * than a full study session. Order is deterministic (not shuffled) so the most
+ * important cards lead.
+ */
+export function buildTopicReviewSet<T extends ReviewSetQuestion>(
+  questions: T[],
+  topicId: string,
+  targetDate: Date | null,
+  now: Date = new Date(),
+  cap: number = TOPIC_REVIEW_SIZE
+): T[] {
+  const inTopic = questions.filter((question) => question.topic_id === topicId);
+  const due = inTopic.filter((question) => isQuestionDue(question, targetDate, now));
+  const dueIds = new Set(due.map((question) => question.id));
+  const rest = inTopic
+    .filter((question) => !dueIds.has(question.id))
+    .sort((a, b) =>
+      a.mastery_score !== b.mastery_score
+        ? a.mastery_score - b.mastery_score
+        : lastReviewedMs(a) - lastReviewedMs(b)
+    );
+  return [...due, ...rest].slice(0, cap);
+}
+
+/**
+ * Collapses how the individual cards went in a topic-review session into a
+ * single rating to log against the review (worst-case wins, so one forgotten
+ * card keeps the review honest). Topic-review intervals are fixed, so this is
+ * recorded for history rather than used to reschedule.
+ */
+export function aggregateReviewRating(ratings: ReviewRating[]): ReviewRating {
+  if (ratings.includes("forgot")) return "forgot";
+  if (ratings.includes("hard")) return "hard";
+  if (ratings.length > 0 && ratings.every((rating) => rating === "easy")) return "easy";
+  return "good";
+}
+
 export function createTopicRevisionDates(startedAt: Date = new Date()): string[] {
   return topicIntervals.map((days) => addDays(startedAt, days).toISOString());
 }
