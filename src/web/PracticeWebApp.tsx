@@ -42,6 +42,9 @@ export function PracticeWebApp() {
   const [activeReview, setActiveReview] = useState<string | null>(null);
   const [reviewPool, setReviewPool] = useState<ExportedQuestion[]>([]);
   const [completedReviews, setCompletedReviews] = useState<Set<string>>(() => new Set());
+  // Cards actually rated in the current review — skips advance position but don't
+  // count toward "recalled", so the tally and completion summary stay honest.
+  const [reviewedCount, setReviewedCount] = useState(0);
 
   // Distinct topics present in the loaded set, for the topic filter dropdown.
   const topics = useMemo(() => {
@@ -100,22 +103,24 @@ export function PracticeWebApp() {
 
   // Mark a review finished once its last card has been rated/skipped.
   useEffect(() => {
-    if (reviewDone && activeReview) {
+    if (reviewDone && activeReview && reviewedCount > 0) {
       setCompletedReviews((prev) => (prev.has(activeReview) ? prev : new Set(prev).add(activeReview)));
     }
-  }, [reviewDone, activeReview]);
+  }, [reviewDone, activeReview, reviewedCount]);
 
   function startReview(reviewTopicId: string) {
     const exam = examDate ? parseISO(examDate) : null;
     setReviewPool(buildTopicReviewSet(questions, reviewTopicId, exam));
     setActiveReview(reviewTopicId);
     setIndex(0);
+    setReviewedCount(0);
   }
 
   function exitReview() {
     setActiveReview(null);
     setReviewPool([]);
     setIndex(0);
+    setReviewedCount(0);
   }
 
   async function loadQuestions() {
@@ -135,6 +140,7 @@ export function PracticeWebApp() {
     setMode("due");
     setActiveReview(null);
     setReviewPool([]);
+    setReviewedCount(0);
     setCompletedReviews(new Set());
   }
 
@@ -149,6 +155,7 @@ export function PracticeWebApp() {
   function rate(rating: ReviewRating) {
     if (!current) return;
     record(current.id, rating, answer, Math.round((Date.now() - startedAt) / 1000));
+    if (mode === "reviews" && activeReview) setReviewedCount((value) => value + 1);
     setIndex((value) => value + 1);
   }
 
@@ -227,14 +234,14 @@ export function PracticeWebApp() {
           </section>
         ) : reviewDone ? (
           <section className="card pw-empty">
-            <p>Reviewed {reviewPool.length} card{reviewPool.length === 1 ? "" : "s"}{activeReviewTitle ? ` for ${activeReviewTitle}` : ""}. Export your practice to sync the ratings back to the desktop app.</p>
+            <p>Recalled {reviewedCount} of {reviewPool.length} card{reviewPool.length === 1 ? "" : "s"}{activeReviewTitle ? ` for ${activeReviewTitle}` : ""}{reviewedCount < reviewPool.length ? ` (${reviewPool.length - reviewedCount} skipped)` : ""}. Export your practice to sync the ratings back to the desktop app.</p>
             <button className="btn" type="button" onClick={exitReview}>Back to reviews</button>
           </section>
         ) : current ? (
           <section className="card raised pw-card">
             <div className="split">
               <span className="pill">{current.topic_title} · {current.difficulty}</span>
-              <span className="muted">{(index % pool.length) + 1} / {pool.length}</span>
+              <span className="muted">{mode === "reviews" && activeReview ? `${reviewedCount} / ${pool.length} recalled` : `${(index % pool.length) + 1} / ${pool.length}`}</span>
             </div>
             <RichText className="prompt">{current.question}</RichText>
             <label className="field">
