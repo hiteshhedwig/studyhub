@@ -1,4 +1,4 @@
-import type { ExportedQuestion } from "../db/repositories/studyRepository";
+import type { ExportedQuestion, ExportedTopicReview } from "../db/repositories/studyRepository";
 import type { ReviewAttempt } from "../db/repositories/types";
 
 // Lightweight JSON sync files exchanged with the phone practice app (via a shared
@@ -7,11 +7,11 @@ const QUESTIONS_TYPE = "studyhub-questions";
 const PRACTICE_TYPE = "studyhub-practice";
 const VERSION = 1;
 
-export type QuestionsFile = { type: typeof QUESTIONS_TYPE; version: number; exported_at: string; exam_date: string | null; questions: ExportedQuestion[] };
+export type QuestionsFile = { type: typeof QUESTIONS_TYPE; version: number; exported_at: string; exam_date: string | null; questions: ExportedQuestion[]; topic_reviews: ExportedTopicReview[] };
 export type PracticeFile = { type: typeof PRACTICE_TYPE; version: number; exported_at: string; attempts: ReviewAttempt[] };
 
-export function buildQuestionsFile(questions: ExportedQuestion[], examDate: string | null): string {
-  const file: QuestionsFile = { type: QUESTIONS_TYPE, version: VERSION, exported_at: new Date().toISOString(), exam_date: examDate, questions };
+export function buildQuestionsFile(questions: ExportedQuestion[], examDate: string | null, topicReviews: ExportedTopicReview[] = []): string {
+  const file: QuestionsFile = { type: QUESTIONS_TYPE, version: VERSION, exported_at: new Date().toISOString(), exam_date: examDate, questions, topic_reviews: topicReviews };
   return JSON.stringify(file, null, 2);
 }
 
@@ -20,7 +20,7 @@ export function buildPracticeFile(attempts: ReviewAttempt[]): string {
   return JSON.stringify(file, null, 2);
 }
 
-export function parseQuestionsFile(text: string): { ok: true; questions: ExportedQuestion[]; examDate: string | null } | { ok: false; error: string } {
+export function parseQuestionsFile(text: string): { ok: true; questions: ExportedQuestion[]; examDate: string | null; topicReviews: ExportedTopicReview[] } | { ok: false; error: string } {
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -31,7 +31,10 @@ export function parseQuestionsFile(text: string): { ok: true; questions: Exporte
   if (file?.type !== QUESTIONS_TYPE || !Array.isArray(file.questions)) {
     return { ok: false, error: "Not a Study Hub questions file (export it from the desktop app's Settings)." };
   }
-  return { ok: true, questions: file.questions as ExportedQuestion[], examDate: (file.exam_date as string | null | undefined) ?? null };
+  // topic_reviews is optional — files exported before this feature simply have no
+  // topic reviews to surface, so default to an empty list rather than rejecting them.
+  const topicReviews = Array.isArray(file.topic_reviews) ? (file.topic_reviews as ExportedTopicReview[]) : [];
+  return { ok: true, questions: file.questions as ExportedQuestion[], examDate: (file.exam_date as string | null | undefined) ?? null, topicReviews };
 }
 
 export function parsePracticeFile(text: string): { ok: true; attempts: ReviewAttempt[] } | { ok: false; error: string } {

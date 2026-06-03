@@ -12,7 +12,7 @@ import { confirmDialog, toast } from "../../store/uiStore";
 import { ACCENT_PRESETS } from "../../services/accentPresets";
 
 export function SettingsPage() {
-  const { theme, setTheme, accent, setAccent, resetAll, exportPracticeQuestions, mergePracticeAttempts } = useAppStore();
+  const { theme, setTheme, accent, setAccent, resetAll, exportPracticeQuestions, exportDueTopicReviews, mergePracticeAttempts } = useAppStore();
   const timer = useSessionTimerStore();
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [volume, setVolumeState] = useState(() => getVolume());
@@ -96,9 +96,13 @@ export function SettingsPage() {
     setSyncBusy(true);
     try {
       const questions = await exportPracticeQuestions();
+      const topicReviews = await exportDueTopicReviews();
       const examDate = exam.enabled && exam.date ? exam.date : null;
-      const saved = await saveTextFile(practiceFileName("studyhub-questions"), buildQuestionsFile(questions, examDate));
-      if (saved) toast.success(`Exported ${questions.length} questions for the phone app.`);
+      const saved = await saveTextFile(practiceFileName("studyhub-questions"), buildQuestionsFile(questions, examDate, topicReviews));
+      if (saved) {
+        const reviewNote = topicReviews.length ? ` · ${topicReviews.length} topic review${topicReviews.length === 1 ? "" : "s"} due` : "";
+        toast.success(`Exported ${questions.length} questions for the phone app.${reviewNote}`);
+      }
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not export questions.");
     } finally {

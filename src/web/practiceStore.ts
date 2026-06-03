@@ -2,14 +2,15 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { calculateQuestionReview } from "../services/spacedRepetition";
 import type { ReviewAttempt, ReviewRating } from "../db/repositories/types";
-import type { ExportedQuestion } from "../db/repositories/studyRepository";
+import type { ExportedQuestion, ExportedTopicReview } from "../db/repositories/studyRepository";
 
 type PracticeState = {
   questions: ExportedQuestion[];
   attempts: ReviewAttempt[];
   examDate: string | null;
+  topicReviews: ExportedTopicReview[];
   loadedAt: string | null;
-  load: (questions: ExportedQuestion[], examDate: string | null) => void;
+  load: (questions: ExportedQuestion[], examDate: string | null, topicReviews: ExportedTopicReview[]) => void;
   record: (questionId: string, rating: ReviewRating, userAnswer: string, seconds: number) => void;
   clearAttempts: () => void;
 };
@@ -25,8 +26,9 @@ export const usePracticeStore = create<PracticeState>()(
       questions: [],
       attempts: [],
       examDate: null,
+      topicReviews: [],
       loadedAt: null,
-      load: (questions, examDate) => set({ questions, examDate, attempts: [], loadedAt: new Date().toISOString() }),
+      load: (questions, examDate, topicReviews) => set({ questions, examDate, topicReviews, attempts: [], loadedAt: new Date().toISOString() }),
       record: (questionId, rating, userAnswer, seconds) => {
         const state = get();
         const question = state.questions.find((q) => q.id === questionId);

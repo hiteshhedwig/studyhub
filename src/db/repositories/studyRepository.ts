@@ -498,6 +498,26 @@ export async function exportPracticeQuestions(): Promise<ExportedQuestion[]> {
   });
 }
 
+export type ExportedTopicReview = { id: string; topic_id: string; due_at: string };
+
+/**
+ * Topic reviews that are pending and already due (topic-level recall nudges). The
+ * phone app can't infer these from per-question due dates — a review pulls in cards
+ * whose own next_due_at is still in the future — so we ship the due topic ids and let
+ * the phone rebuild each recall set locally with buildTopicReviewSet.
+ */
+export async function exportDueTopicReviews(): Promise<ExportedTopicReview[]> {
+  return withDb((db) =>
+    toRows<ExportedTopicReview>(
+      db,
+      `SELECT id, topic_id, due_at FROM RevisionSchedule
+       WHERE type = 'topic_review' AND status = 'pending' AND due_at <= ?
+       ORDER BY due_at ASC`,
+      [now()]
+    )
+  );
+}
+
 const VALID_RATINGS = new Set<ReviewRating>(["forgot", "hard", "good", "easy"]);
 
 // Recompute a question's progress by replaying its full attempt history (chronological),

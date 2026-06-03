@@ -76,6 +76,19 @@
 
 .pw-empty { display: grid; gap: 12px; justify-items: start; }
 
+/* Topic-review picker: due topics, each opening a frozen recall set. */
+.pw-reviews { display: grid; gap: 12px; }
+.pw-review-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pw-review-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+.pw-review-title { font-weight: 500; }
+
 @media (min-width: 600px) {
   .pw-shell .rating-row { grid-template-columns: repeat(4, 1fr); }
 }
