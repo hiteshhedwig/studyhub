@@ -4,14 +4,30 @@ import { calculateQuestionReview } from "../services/spacedRepetition";
 import type { ReviewAttempt, ReviewRating } from "../db/repositories/types";
 import type { ExportedQuestion, ExportedTopicReview } from "../db/repositories/studyRepository";
 
+/**
+ * The in-progress topic review, mirrored here so it survives a reload — `poolIds`
+ * freezes the card order built on entry, `index` is the cursor (advances on skip
+ * too), and `reviewedCount` is the rated-only tally shown as "X / N recalled".
+ */
+export type ReviewSession = {
+  topicId: string;
+  poolIds: string[];
+  index: number;
+  reviewedCount: number;
+};
+
 type PracticeState = {
   questions: ExportedQuestion[];
   attempts: ReviewAttempt[];
   examDate: string | null;
   topicReviews: ExportedTopicReview[];
   loadedAt: string | null;
+  reviewSession: ReviewSession | null;
+  completedReviews: string[];
   load: (questions: ExportedQuestion[], examDate: string | null, topicReviews: ExportedTopicReview[]) => void;
   record: (questionId: string, rating: ReviewRating, userAnswer: string, seconds: number) => void;
+  setReviewSession: (session: ReviewSession | null) => void;
+  setCompletedReviews: (topicIds: string[]) => void;
   clearAttempts: () => void;
 };
 
@@ -28,7 +44,9 @@ export const usePracticeStore = create<PracticeState>()(
       examDate: null,
       topicReviews: [],
       loadedAt: null,
-      load: (questions, examDate, topicReviews) => set({ questions, examDate, topicReviews, attempts: [], loadedAt: new Date().toISOString() }),
+      reviewSession: null,
+      completedReviews: [],
+      load: (questions, examDate, topicReviews) => set({ questions, examDate, topicReviews, attempts: [], loadedAt: new Date().toISOString(), reviewSession: null, completedReviews: [] }),
       record: (questionId, rating, userAnswer, seconds) => {
         const state = get();
         const question = state.questions.find((q) => q.id === questionId);
@@ -63,6 +81,8 @@ export const usePracticeStore = create<PracticeState>()(
           )
         });
       },
+      setReviewSession: (reviewSession) => set({ reviewSession }),
+      setCompletedReviews: (completedReviews) => set({ completedReviews }),
       clearAttempts: () => set({ attempts: [] })
     }),
     { name: "studyhub-web-practice" }

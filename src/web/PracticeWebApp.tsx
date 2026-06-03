@@ -27,24 +27,33 @@ function shuffleWithSeed<T>(items: T[], seed: number): T[] {
 }
 
 export function PracticeWebApp() {
-  const { questions, attempts, examDate, topicReviews, load, record } = usePracticeStore();
-  const [mode, setMode] = useState<"due" | "all" | "reviews">("due");
+  const { questions, attempts, examDate, topicReviews, load, record, setReviewSession, setCompletedReviews } = usePracticeStore();
+  // A review left open when the app was closed lives in the persisted store, so we
+  // resume from it on mount rather than starting fresh (the rated cards are saved
+  // in `attempts` either way — this restores the cursor and the "recalled" tally).
+  const savedSession = usePracticeStore.getState().reviewSession;
+  const [mode, setMode] = useState<"due" | "all" | "reviews">(() => (savedSession ? "reviews" : "due"));
   const [topicId, setTopicId] = useState("");
   const [seed, setSeed] = useState(() => Date.now());
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() => savedSession?.index ?? 0);
   const [revealed, setRevealed] = useState(false);
   const [answer, setAnswer] = useState("");
   const [startedAt, setStartedAt] = useState(Date.now());
   // Topic-review state: which topic's recall set is open, the frozen set itself
   // (built once on entry so mid-session rating changes don't reshuffle it), and the
-  // topics finished this session — purely a local "✓ reviewed" cue (the desktop
-  // closes the nudge itself from the merged attempts).
-  const [activeReview, setActiveReview] = useState<string | null>(null);
-  const [reviewPool, setReviewPool] = useState<ExportedQuestion[]>([]);
-  const [completedReviews, setCompletedReviews] = useState<Set<string>>(() => new Set());
+  // topics finished this session — a local "✓ reviewed" cue (the desktop closes the
+  // nudge itself from the merged attempts). All three are mirrored into the store
+  // so a mid-review reload keeps your place instead of resetting to zero.
+  const [activeReview, setActiveReview] = useState<string | null>(() => savedSession?.topicId ?? null);
+  const [reviewPool, setReviewPool] = useState<ExportedQuestion[]>(() => {
+    if (!savedSession) return [];
+    const byId = new Map(usePracticeStore.getState().questions.map((q) => [q.id, q]));
+    return savedSession.poolIds.map((id) => byId.get(id)).filter((q): q is ExportedQuestion => Boolean(q));
+  });
+  const [completedReviews, setLocalCompletedReviews] = useState<Set<string>>(() => new Set(usePracticeStore.getState().completedReviews));
   // Cards actually rated in the current review — skips advance position but don't
   // count toward "recalled", so the tally and completion summary stay honest.
-  const [reviewedCount, setReviewedCount] = useState(0);
+  const [reviewedCount, setReviewedCount] = useState(() => savedSession?.reviewedCount ?? 0);
 
   // Distinct topics present in the loaded set, for the topic filter dropdown.
   const topics = useMemo(() => {
@@ -104,9 +113,21 @@ export function PracticeWebApp() {
   // Mark a review finished once its last card has been rated/skipped.
   useEffect(() => {
     if (reviewDone && activeReview && reviewedCount > 0) {
-      setCompletedReviews((prev) => (prev.has(activeReview) ? prev : new Set(prev).add(activeReview)));
+      setLocalCompletedReviews((prev) => (prev.has(activeReview) ? prev : new Set(prev).add(activeReview)));
     }
   }, [reviewDone, activeReview, reviewedCount]);
+
+  // Mirror the live review cursor and the finished-topic set into the persisted
+  // store so closing and reopening the app resumes where you left off.
+  useEffect(() => {
+    setReviewSession(
+      activeReview ? { topicId: activeReview, poolIds: reviewPool.map((q) => q.id), index, reviewedCount } : null
+    );
+  }, [activeReview, reviewPool, index, reviewedCount, setReviewSession]);
+
+  useEffect(() => {
+    setCompletedReviews([...completedReviews]);
+  }, [completedReviews, setCompletedReviews]);
 
   function startReview(reviewTopicId: string) {
     const exam = examDate ? parseISO(examDate) : null;
@@ -141,7 +162,7 @@ export function PracticeWebApp() {
     setActiveReview(null);
     setReviewPool([]);
     setReviewedCount(0);
-    setCompletedReviews(new Set());
+    setLocalCompletedReviews(new Set());
   }
 
   async function exportPractice() {
