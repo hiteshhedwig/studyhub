@@ -132,7 +132,7 @@ export async function evaluateAnswer(input: EvaluateInput): Promise<EvaluateOutp
       console.warn("[ai-eval] could not parse grade. raw model content:\n", content);
       return {
         ok: false,
-        error: "Couldn't parse the AI grade — the model likely doesn't support structured output. Avoid \":free\" models (use e.g. google/gemini-2.0-flash-001) in Settings."
+        error: "Couldn't parse the AI grade — the model likely doesn't support structured output. Avoid \":free\" models (use e.g. google/gemini-3.5-flash) in Settings."
       };
     }
     return { ok: true, data: parsed.data };

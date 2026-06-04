@@ -253,7 +253,7 @@ export function SettingsPage() {
           </label>
           <p className="muted" style={{ fontSize: "var(--text-xs)" }}>
             Use a model that supports structured output — OpenRouter <code>:free</code> tiers do not, so grading will fail.
-            Good picks: <code>google/gemini-2.0-flash-001</code>, <code>openai/gpt-4o-mini</code>. Create a key at openrouter.ai/keys;
+            Good picks: <code>google/gemini-3.5-flash</code>, <code>openai/gpt-5.4-mini</code>. Create a key at openrouter.ai/keys;
             it's stored locally in plain text on this device.
           </p>
         </div>

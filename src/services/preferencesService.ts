@@ -62,7 +62,7 @@ const AI_MODEL_KEY = "study-hub-ai-model";
 
 // Must support structured outputs — OpenRouter ":free" tiers do NOT, so the
 // grade JSON can't be parsed. Default to a cheap, fast, schema-capable model.
-export const DEFAULT_AI_MODEL = "google/gemini-2.0-flash-001";
+export const DEFAULT_AI_MODEL = "google/gemini-3.5-flash";
 
 export type AiEvalConfig = { enabled: boolean; apiKey: string; model: string };
 
