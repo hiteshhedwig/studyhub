@@ -1,5 +1,5 @@
 import type { Database } from "sql.js";
-import { addDays, parseISO } from "date-fns";
+import { addDays, endOfDay, parseISO } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
 import { calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
 import { getActiveExamDate } from "../../services/preferencesService";
@@ -505,6 +505,12 @@ export type ExportedTopicReview = { id: string; topic_id: string; due_at: string
  * phone app can't infer these from per-question due dates — a review pulls in cards
  * whose own next_due_at is still in the future — so we ship the due topic ids and let
  * the phone rebuild each recall set locally with buildTopicReviewSet.
+ *
+ * "Due" means the calendar day, not the exact instant: a review's due_at carries the
+ * time-of-day of the study session that scheduled it, so one due at 9pm today is
+ * already "due today" on the desktop (isToday) from the morning on. Comparing against
+ * end-of-today rather than now() keeps the export in step — otherwise reviews due later
+ * today show on desktop but never reach the phone.
  */
 export async function exportDueTopicReviews(): Promise<ExportedTopicReview[]> {
   return withDb((db) =>
@@ -513,7 +519,7 @@ export async function exportDueTopicReviews(): Promise<ExportedTopicReview[]> {
       `SELECT id, topic_id, due_at FROM RevisionSchedule
        WHERE type = 'topic_review' AND status = 'pending' AND due_at <= ?
        ORDER BY due_at ASC`,
-      [now()]
+      [endOfDay(new Date()).toISOString()]
     )
   );
 }
