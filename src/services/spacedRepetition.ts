@@ -146,17 +146,21 @@ export function buildTopicReviewSet<T extends ReviewSetQuestion>(
   return [...due, ...rest].slice(0, cap);
 }
 
+const REVIEW_RATING_SCALE: Record<ReviewRating, number> = { forgot: 1, hard: 2, good: 3, easy: 4 };
+const REVIEW_RATING_BY_SCORE: ReviewRating[] = ["forgot", "forgot", "hard", "good", "easy"]; // index 0 unused; 1→forgot … 4→easy
+
 /**
- * Collapses how the individual cards went in a topic-review session into a
- * single rating to log against the review (worst-case wins, so one forgotten
- * card keeps the review honest). Topic-review intervals are fixed, so this is
- * recorded for history rather than used to reschedule.
+ * Collapses how the individual cards went in a topic-review session into a single
+ * rating to log against the review — the rounded mean of the cards on a 1–4 scale
+ * (forgot=1 … easy=4), so the label reflects how the whole session went rather than
+ * the single weakest card. Topic-review intervals are fixed, so this is recorded for
+ * history (the timeline chip + Slipping trend) rather than used to reschedule.
+ * Empty (no cards rated) defaults to "good".
  */
 export function aggregateReviewRating(ratings: ReviewRating[]): ReviewRating {
-  if (ratings.includes("forgot")) return "forgot";
-  if (ratings.includes("hard")) return "hard";
-  if (ratings.length > 0 && ratings.every((rating) => rating === "easy")) return "easy";
-  return "good";
+  if (ratings.length === 0) return "good";
+  const mean = ratings.reduce((sum, rating) => sum + REVIEW_RATING_SCALE[rating], 0) / ratings.length;
+  return REVIEW_RATING_BY_SCORE[Math.round(mean)];
 }
 
 export function createTopicRevisionDates(startedAt: Date = new Date()): string[] {

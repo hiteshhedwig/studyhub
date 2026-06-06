@@ -137,13 +137,18 @@ describe("spaced repetition", () => {
   });
 
   describe("aggregateReviewRating", () => {
-    it("worst card wins", () => {
-      expect(aggregateReviewRating(["good", "forgot", "easy"])).toBe("forgot");
-      expect(aggregateReviewRating(["good", "hard", "easy"])).toBe("hard");
+    it("is the rounded mean, so one weak card doesn't sink a solid session", () => {
+      // 3+3+3+2+1 = 12 / 5 = 2.4 → round → 2 → hard (not forgot)
+      expect(aggregateReviewRating(["good", "good", "good", "hard", "forgot"])).toBe("hard");
+      // one forgot among solid cards: 3+1 = 4 / 2 = 2 → hard
+      expect(aggregateReviewRating(["good", "forgot"])).toBe("hard");
+      // 3+4 = 7 / 2 = 3.5 → round → 4 → easy
+      expect(aggregateReviewRating(["good", "easy"])).toBe("easy");
     });
-    it("all-easy stays easy, mixed-good is good, empty is good", () => {
+    it("reflects a genuinely bad session and handles the extremes", () => {
+      expect(aggregateReviewRating(["forgot", "forgot", "hard"])).toBe("forgot"); // 1.33 → 1
       expect(aggregateReviewRating(["easy", "easy"])).toBe("easy");
-      expect(aggregateReviewRating(["good", "easy"])).toBe("good");
+      expect(aggregateReviewRating(["good", "good"])).toBe("good");
       expect(aggregateReviewRating([])).toBe("good");
     });
   });

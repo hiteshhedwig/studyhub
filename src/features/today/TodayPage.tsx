@@ -405,7 +405,12 @@ export function TodayPage() {
               </label>
               {!selectedTopicId ? (
                 <div className="grid two">
-                  <label className="field"><span>Category</span><input className="input" value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Machine Learning" /></label>
+                  <label className="field"><span>Category</span>
+                    <input className="input" value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Machine Learning" list="category-options" autoComplete="off" />
+                    <datalist id="category-options">
+                      {store.categories.map((category) => <option value={category.name} key={category.id} />)}
+                    </datalist>
+                  </label>
                   <label className="field"><span>Topic</span><input className="input" value={topicTitle} onChange={(event) => setTopicTitle(event.target.value)} placeholder="Decision Trees" /></label>
                 </div>
               ) : null}
