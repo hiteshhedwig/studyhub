@@ -120,9 +120,10 @@ export function SettingsPage() {
         toast.danger(parsed.error);
         return;
       }
-      const summary = await mergePracticeAttempts(parsed.attempts);
+      const summary = await mergePracticeAttempts(parsed.attempts, parsed.completedTopicReviews);
+      const reviewNote = summary.reviews ? ` · ${summary.reviews} topic review${summary.reviews === 1 ? "" : "s"} closed` : "";
       toast.success(
-        `Merged ${summary.merged} new attempt${summary.merged === 1 ? "" : "s"} across ${summary.questions} question${summary.questions === 1 ? "" : "s"}${summary.skipped ? ` · ${summary.skipped} skipped` : ""}.`
+        `Merged ${summary.merged} new attempt${summary.merged === 1 ? "" : "s"} across ${summary.questions} question${summary.questions === 1 ? "" : "s"}${summary.skipped ? ` · ${summary.skipped} skipped` : ""}${reviewNote}.`
       );
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not merge practice.");

@@ -8,15 +8,18 @@ const PRACTICE_TYPE = "studyhub-practice";
 const VERSION = 1;
 
 export type QuestionsFile = { type: typeof QUESTIONS_TYPE; version: number; exported_at: string; exam_date: string | null; questions: ExportedQuestion[]; topic_reviews: ExportedTopicReview[] };
-export type PracticeFile = { type: typeof PRACTICE_TYPE; version: number; exported_at: string; attempts: ReviewAttempt[] };
+// completed_topic_reviews carries the ids of the topic-review nudges the phone
+// finished, so the desktop can close those RevisionSchedule rows on merge. Without
+// it, attempts merge but topic reviews stay pending forever.
+export type PracticeFile = { type: typeof PRACTICE_TYPE; version: number; exported_at: string; attempts: ReviewAttempt[]; completed_topic_reviews: string[] };
 
 export function buildQuestionsFile(questions: ExportedQuestion[], examDate: string | null, topicReviews: ExportedTopicReview[] = []): string {
   const file: QuestionsFile = { type: QUESTIONS_TYPE, version: VERSION, exported_at: new Date().toISOString(), exam_date: examDate, questions, topic_reviews: topicReviews };
   return JSON.stringify(file, null, 2);
 }
 
-export function buildPracticeFile(attempts: ReviewAttempt[]): string {
-  const file: PracticeFile = { type: PRACTICE_TYPE, version: VERSION, exported_at: new Date().toISOString(), attempts };
+export function buildPracticeFile(attempts: ReviewAttempt[], completedTopicReviews: string[] = []): string {
+  const file: PracticeFile = { type: PRACTICE_TYPE, version: VERSION, exported_at: new Date().toISOString(), attempts, completed_topic_reviews: completedTopicReviews };
   return JSON.stringify(file, null, 2);
 }
 
@@ -37,7 +40,7 @@ export function parseQuestionsFile(text: string): { ok: true; questions: Exporte
   return { ok: true, questions: file.questions as ExportedQuestion[], examDate: (file.exam_date as string | null | undefined) ?? null, topicReviews };
 }
 
-export function parsePracticeFile(text: string): { ok: true; attempts: ReviewAttempt[] } | { ok: false; error: string } {
+export function parsePracticeFile(text: string): { ok: true; attempts: ReviewAttempt[]; completedTopicReviews: string[] } | { ok: false; error: string } {
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -48,7 +51,12 @@ export function parsePracticeFile(text: string): { ok: true; attempts: ReviewAtt
   if (file?.type !== PRACTICE_TYPE || !Array.isArray(file.attempts)) {
     return { ok: false, error: "Not a Study Hub practice file (expected a phone practice export)." };
   }
-  return { ok: true, attempts: file.attempts as ReviewAttempt[] };
+  // Older phone exports predate completed_topic_reviews — treat a missing list as
+  // "no reviews finished" rather than rejecting the file.
+  const completedTopicReviews = Array.isArray(file.completed_topic_reviews)
+    ? (file.completed_topic_reviews as string[]).filter((value): value is string => typeof value === "string")
+    : [];
+  return { ok: true, attempts: file.attempts as ReviewAttempt[], completedTopicReviews };
 }
 
 export function practiceFileName(prefix: string): string {

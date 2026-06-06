@@ -170,7 +170,10 @@ export function PracticeWebApp() {
       window.alert("No practice recorded yet — rate a few cards first.");
       return;
     }
-    await saveTextFile(practiceFileName("studyhub-practice"), buildPracticeFile(attempts));
+    // Map the topics finished this session back to the review ids the desktop shipped,
+    // so the merge can close those exact topic-review nudges.
+    const completedReviewIds = topicReviews.filter((review) => completedReviews.has(review.topic_id)).map((review) => review.id);
+    await saveTextFile(practiceFileName("studyhub-practice"), buildPracticeFile(attempts, completedReviewIds));
   }
 
   function rate(rating: ReviewRating) {

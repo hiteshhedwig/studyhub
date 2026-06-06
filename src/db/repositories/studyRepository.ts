@@ -1,7 +1,7 @@
 import type { Database } from "sql.js";
 import { addDays, endOfDay, parseISO } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
-import { calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
+import { aggregateReviewRating, calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
 import { getActiveExamDate } from "../../services/preferencesService";
 import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionSet, ResourceLink, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
 import type { QuestionImport } from "../../services/importQuestions";
@@ -562,13 +562,22 @@ function recomputeQuestionFromHistory(db: Database, questionId: string) {
  * Merge practice attempts from the phone (attempts-in hop). Non-destructive:
  * new attempts are unioned by id (existing/unknown-question/invalid ones skipped),
  * then each touched question — and its topic's mastery — is recomputed from the merged
- * history. Safe to run repeatedly; ids dedupe so nothing is double-counted.
+ * history. `completedTopicReviewIds` are the topic-review nudges the phone finished;
+ * each still-pending one is closed here so it stops showing as due on the desktop.
+ * Safe to run repeatedly; attempt ids dedupe and reviews only close while pending, so
+ * nothing is double-counted.
  */
-export async function mergePracticeAttempts(attempts: ReviewAttempt[]): Promise<{ merged: number; skipped: number; questions: number }> {
+export async function mergePracticeAttempts(
+  attempts: ReviewAttempt[],
+  completedTopicReviewIds: string[] = []
+): Promise<{ merged: number; skipped: number; questions: number; reviews: number }> {
   return withDb((db) => {
     const existingIds = new Set(toRows<{ id: string }>(db, "SELECT id FROM ReviewAttempt").map((r) => r.id));
     const validQuestions = new Set(toRows<{ id: string }>(db, "SELECT id FROM Question").map((r) => r.id));
     const touched = new Set<string>();
+    // The attempts actually inserted this run, kept so a completed topic review can be
+    // logged with a rating drawn only from this batch (not re-counting old duplicates).
+    const mergedAttempts: { question_id: string; rating: ReviewRating }[] = [];
     let merged = 0;
     let skipped = 0;
 
@@ -596,6 +605,7 @@ export async function mergePracticeAttempts(attempts: ReviewAttempt[]): Promise<
       ]);
       existingIds.add(attempt.id);
       touched.add(attempt.question_id);
+      mergedAttempts.push({ question_id: attempt.question_id, rating: attempt.rating });
       merged += 1;
     }
 
@@ -613,7 +623,36 @@ export async function mergePracticeAttempts(attempts: ReviewAttempt[]): Promise<
       }
     }
 
-    return { merged, skipped, questions: touched.size };
+    // Collect the ratings each completed review should be logged with, drawn from this
+    // batch's attempts on that topic (falls back to "good" if none came through).
+    const newRatingsByTopic = new Map<string, ReviewRating[]>();
+    for (const attempt of mergedAttempts) {
+      const owner = one<{ topic_id: string }>(db, "SELECT topic_id FROM Question WHERE id = ?", [attempt.question_id]);
+      if (!owner) continue;
+      const bucket = newRatingsByTopic.get(owner.topic_id) ?? [];
+      bucket.push(attempt.rating);
+      newRatingsByTopic.set(owner.topic_id, bucket);
+    }
+
+    let reviews = 0;
+    for (const reviewId of completedTopicReviewIds) {
+      if (typeof reviewId !== "string") continue;
+      const revision = one<RevisionSchedule>(
+        db,
+        "SELECT * FROM RevisionSchedule WHERE id = ? AND type = 'topic_review' AND status = 'pending'",
+        [reviewId]
+      );
+      if (!revision) continue;
+      const rating = aggregateReviewRating(newRatingsByTopic.get(revision.topic_id) ?? []);
+      const completedAt = now();
+      db.run("UPDATE RevisionSchedule SET status = 'completed', completed_at = ?, rating = ? WHERE id = ?", [completedAt, rating, reviewId]);
+      db.run("UPDATE Topic SET last_revised_at = ?, updated_at = ? WHERE id = ?", [completedAt, completedAt, revision.topic_id]);
+      const next = one<RevisionSchedule>(db, "SELECT * FROM RevisionSchedule WHERE topic_id = ? AND status = 'pending' ORDER BY due_at LIMIT 1", [revision.topic_id]);
+      db.run("UPDATE Topic SET next_revision_at = ? WHERE id = ?", [next?.due_at ?? null, revision.topic_id]);
+      reviews += 1;
+    }
+
+    return { merged, skipped, questions: touched.size, reviews };
   }, true);
 }
 
