@@ -36,6 +36,9 @@ export type StudySession = {
   difficulty_rating: number | null;
   chatgpt_link: string | null;
   created_at: string;
+  // Focus time (seconds) from an unfinished final phase when the session was ended
+  // mid-pomodoro — added to focus_minutes × pomodoros_completed for total study time.
+  extra_focus_seconds: number;
 };
 export type Cheatsheet = {
   id: string;

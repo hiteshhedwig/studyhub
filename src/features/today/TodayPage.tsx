@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Link } from "react-router-dom";
 import { differenceInCalendarDays, format, isPast, isToday, parseISO } from "date-fns";
 import { ChevronRight, Flame, Layers2, Paperclip, Play, Square, Target } from "lucide-react";
-import { currentFocusStreak, focusHeatmap, reviewHeatmap } from "../../services/statsService";
+import { currentFocusStreak, focusHeatmap, reviewHeatmap, sessionFocusMinutes } from "../../services/statsService";
 import { isQuestionDue } from "../../services/spacedRepetition";
 import { FocusHeatmap } from "../../components/charts/FocusHeatmap";
 import { ReviewHeatmap } from "../../components/charts/ReviewHeatmap";
@@ -82,6 +82,9 @@ export function TodayPage() {
   // last-seen count so we fire only on a fresh increment, not on every render.
   const [cyclePulse, setCyclePulse] = useState(false);
   const lastCelebratedCycles = useRef(timer.completedFocusCycles);
+  // Focus seconds captured at the moment the session is ended, so a partial
+  // (unfinished) focus phase is still credited as study time on wrap-up.
+  const pendingFocusSecondsRef = useRef(0);
 
   const todaySessions = store.sessions.filter((session) => isToday(parseISO(session.started_at)));
   const dueRevisions = store.revisions.filter((revision) => revision.status === "pending" && isToday(parseISO(revision.due_at)));
@@ -96,7 +99,7 @@ export function TodayPage() {
     .map((question) => parseISO(question.next_due_at))
     .filter((date) => date.getTime() > Date.now())
     .sort((a, b) => a.getTime() - b.getTime())[0];
-  const todayMinutes = todaySessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
+  const todayMinutes = todaySessions.reduce((sum, session) => sum + sessionFocusMinutes(session), 0);
   const pomodoros = todaySessions.reduce((sum, session) => sum + session.pomodoros_completed, 0);
   const streak = currentFocusStreak(store.sessions);
   const extendedToday = todayMinutes > 0; // the flame only "breathes" on days you keep the streak alive
@@ -206,6 +209,7 @@ export function TodayPage() {
       resolvedTopicTitle = topic.title;
     }
     const session = await store.startSession({ topicId, title: title || "Focused study", focusMinutes: focus, breakMinutes, notes });
+    pendingFocusSecondsRef.current = 0; // fresh session — no carried-over partial focus
     timer.startTimer({
       activeSessionId: session.id,
       topicTitle: resolvedTopicTitle || "Current topic",
@@ -254,9 +258,37 @@ export function TodayPage() {
     }
   }
 
+  // Focus seconds elapsed in an in-progress (running or paused) focus phase. Zero
+  // at any phase boundary (remaining 0 / awaiting prompts) — those already counted
+  // as a full pomodoro, so this only ever credits genuinely partial time.
+  function liveFocusSeconds(): number {
+    if (timer.remainingSeconds <= 0 || timer.awaitingFinalChoice || timer.awaitingNextPhase) return 0;
+    const inFocus = timer.phase === "focus" || (timer.phase === "paused" && timer.previousPhase === "focus");
+    return inFocus ? Math.max(0, timer.totalPhaseSeconds - timer.remainingSeconds) : 0;
+  }
+
+  // Capture the partial focus time, then end the timer (which resets the phase).
+  function endTimerWithCapture() {
+    pendingFocusSecondsRef.current = liveFocusSeconds();
+    timer.endTimer();
+  }
+
   async function finishSession() {
     if (!store.activeSession) return;
-    await store.endSession({ sessionId: store.activeSession.id, reflection, understanding, difficulty, chatgptLink, scheduleRevisions: schedule });
+    // Reconcile the pomodoro count to the timer's authoritative total (so cycles
+    // completed while away from this page aren't lost) and bank any partial focus.
+    const completedCycles = timer.activeSessionId === store.activeSession.id ? timer.completedFocusCycles : undefined;
+    await store.endSession({
+      sessionId: store.activeSession.id,
+      reflection,
+      understanding,
+      difficulty,
+      chatgptLink,
+      scheduleRevisions: schedule,
+      completedCycles,
+      extraFocusSeconds: pendingFocusSecondsRef.current
+    });
+    pendingFocusSecondsRef.current = 0;
     timer.endTimer();
     setNotes("");
     setReflection("");
@@ -272,7 +304,7 @@ export function TodayPage() {
       confirmLabel: "Go to wrap-up"
     });
     if (!ok) return;
-    timer.endTimer();
+    endTimerWithCapture();
   }
 
   async function handleOpenOverlay() {
@@ -370,7 +402,7 @@ export function TodayPage() {
                   <div className="button-row">
                     <button className="btn" onClick={timer.continueAnotherCycle}>Continue another cycle</button>
                     <button className="btn" onClick={timer.takeLongBreak}>Take long break</button>
-                    <button className="btn primary" onClick={timer.endTimer}>End and wrap up</button>
+                    <button className="btn primary" onClick={endTimerWithCapture}>End and wrap up</button>
                   </div>
                 </div>
               ) : timer.awaitingNextPhase ? (

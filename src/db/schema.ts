@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS StudySession (
   difficulty_rating INTEGER,
   chatgpt_link TEXT,
   created_at TEXT NOT NULL,
+  extra_focus_seconds INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY(topic_id) REFERENCES Topic(id)
 );
 

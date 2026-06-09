@@ -184,10 +184,11 @@ export async function startSession(input: { topicId: string; title: string; focu
       understanding_rating: null,
       difficulty_rating: null,
       chatgpt_link: null,
-      created_at: now()
+      created_at: now(),
+      extra_focus_seconds: 0
     };
     db.run(
-      `INSERT INTO StudySession VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO StudySession VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         session.id,
         session.topic_id,
@@ -202,7 +203,8 @@ export async function startSession(input: { topicId: string; title: string; focu
         session.understanding_rating,
         session.difficulty_rating,
         session.chatgpt_link,
-        session.created_at
+        session.created_at,
+        session.extra_focus_seconds
       ]
     );
     db.run("UPDATE Topic SET last_studied_at = ?, updated_at = ? WHERE id = ?", [session.started_at, now(), input.topicId]);
@@ -229,6 +231,12 @@ export async function endSession(input: {
   difficulty: number;
   chatgptLink?: string;
   scheduleRevisions: boolean;
+  // The timer's authoritative full-pomodoro count, reconciled here so cycles
+  // completed while away from the Today page (which records them) aren't lost.
+  completedCycles?: number;
+  // Focus seconds from an unfinished final phase, credited so ending mid-pomodoro
+  // still records the time actually studied.
+  extraFocusSeconds?: number;
 }) {
   return withDb((db) => {
     const session = one<StudySession>(db, "SELECT * FROM StudySession WHERE id = ?", [input.sessionId]);
@@ -236,11 +244,17 @@ export async function endSession(input: {
     // wrap up the session twice, which would insert a second full set of revisions.
     if (!session || session.ended_at) return;
     const endedAt = now();
+    // Never decrease the count — completedCycles is the timer's truth, but the
+    // per-cycle recorder may already have banked the same pomodoros.
+    const pomodoros = typeof input.completedCycles === "number"
+      ? Math.max(session.pomodoros_completed, Math.round(input.completedCycles))
+      : session.pomodoros_completed;
+    const extraSeconds = Math.max(0, Math.round(input.extraFocusSeconds ?? 0));
     db.run(
       `UPDATE StudySession
-       SET ended_at = ?, reflection = ?, understanding_rating = ?, difficulty_rating = ?, chatgpt_link = ?
+       SET ended_at = ?, reflection = ?, understanding_rating = ?, difficulty_rating = ?, chatgpt_link = ?, pomodoros_completed = ?, extra_focus_seconds = ?
        WHERE id = ?`,
-      [endedAt, input.reflection, input.understanding, input.difficulty, input.chatgptLink ?? null, input.sessionId]
+      [endedAt, input.reflection, input.understanding, input.difficulty, input.chatgptLink ?? null, pomodoros, extraSeconds, input.sessionId]
     );
     if (input.chatgptLink) {
       db.run("INSERT INTO ResourceLink VALUES (?, ?, ?, ?, ?, ?, ?)", [id(), session.topic_id, session.id, "ChatGPT conversation", input.chatgptLink, "chatgpt", now()]);

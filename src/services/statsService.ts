@@ -9,6 +9,14 @@ const RATING_SCALE: Record<ReviewRating, number> = { forgot: 1, hard: 2, good: 3
 
 export type Trend = "up" | "flat" | "down";
 
+/**
+ * Total study minutes for a session: completed pomodoros (focus_minutes each)
+ * plus any partial focus time banked when the session was ended mid-pomodoro.
+ */
+export function sessionFocusMinutes(session: { focus_minutes: number; pomodoros_completed: number; extra_focus_seconds?: number }): number {
+  return session.focus_minutes * session.pomodoros_completed + (session.extra_focus_seconds ?? 0) / 60;
+}
+
 export function topicTrend(topicId: string, revisions: RevisionSchedule[]): Trend | null {
   const completed = revisions
     .filter((r) => r.topic_id === topicId && r.status === "completed" && r.rating && r.completed_at)
@@ -34,7 +42,7 @@ export function topicHasLateRevision(topicId: string, revisions: RevisionSchedul
 
 export function currentFocusStreak(sessions: StudySession[], now = new Date()): number {
   const today = startOfDay(now);
-  const days = new Set(sessions.filter((s) => s.focus_minutes * s.pomodoros_completed > 0).map((s) => format(parseISO(s.started_at), "yyyy-MM-dd")));
+  const days = new Set(sessions.filter((s) => sessionFocusMinutes(s) > 0).map((s) => format(parseISO(s.started_at), "yyyy-MM-dd")));
   // Allow today's absence — count from yesterday backward if today is empty.
   let cursor = days.has(format(today, "yyyy-MM-dd")) ? today : subDays(today, 1);
   let streak = 0;
@@ -54,7 +62,7 @@ export function focusHeatmap(sessions: StudySession[], weeks = 53, now = new Dat
   const totals = new Map<string, number>();
   sessions.forEach((s) => {
     const key = format(parseISO(s.started_at), "yyyy-MM-dd");
-    totals.set(key, (totals.get(key) ?? 0) + s.focus_minutes * s.pomodoros_completed);
+    totals.set(key, (totals.get(key) ?? 0) + sessionFocusMinutes(s));
   });
   const allDays = eachDayOfInterval({ start, end });
   const cols: HeatmapCell[][] = [];

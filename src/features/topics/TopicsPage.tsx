@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronLeft, ExternalLink, FileText, Minus, MessageSquare, Trash2, Video } from "lucide-react";
-import { topicHasLateRevision, topicPracticeStats, topicTrend, type Trend } from "../../services/statsService";
+import { sessionFocusMinutes, topicHasLateRevision, topicPracticeStats, topicTrend, type Trend } from "../../services/statsService";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -129,7 +129,7 @@ export function TopicDetailPage() {
   );
 
   const topicSessions = sessions.filter((session) => session.topic_id === topic.id);
-  const totalMinutes = topicSessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
+  const totalMinutes = topicSessions.reduce((sum, session) => sum + sessionFocusMinutes(session), 0);
   const topicSheets = cheatsheets.filter((item) => item.topic_id === topic.id);
   const topicSets = questionSets.filter((item) => item.topic_id === topic.id);
   const topicQuestions = questions.filter((item) => item.topic_id === topic.id);

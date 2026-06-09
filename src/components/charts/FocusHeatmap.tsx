@@ -1,5 +1,5 @@
 import { format, parseISO } from "date-fns";
-import type { HeatmapCell } from "../../services/statsService";
+import { sessionFocusMinutes, type HeatmapCell } from "../../services/statsService";
 import type { StudySession } from "../../db/repositories/types";
 import { formatMinutes } from "../../utils/formatTime";
 import { Heatmap } from "./Heatmap";
@@ -7,10 +7,6 @@ import { Heatmap } from "./Heatmap";
 // A day with 8h+ (480m) of focus is celebrated with a golden cell, sitting
 // above the normal 0–4 intensity ramp regardless of the chosen accent.
 const GOLD_THRESHOLD_MINUTES = 480;
-
-function sessionMinutes(session: StudySession): number {
-  return session.focus_minutes * session.pomodoros_completed;
-}
 
 export function FocusHeatmap({ data, sessions = [] }: { data: HeatmapCell[][]; sessions?: StudySession[] }) {
   const totalDays = data.flat().length;
@@ -35,7 +31,7 @@ export function FocusHeatmap({ data, sessions = [] }: { data: HeatmapCell[][]; s
             key: session.id,
             left: format(parseISO(session.started_at), "h:mm a"),
             title: session.title,
-            right: formatMinutes(sessionMinutes(session))
+            right: formatMinutes(sessionFocusMinutes(session))
           })),
           empty: "No focus logged this day."
         };
