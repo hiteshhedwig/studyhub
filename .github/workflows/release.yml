@@ -70,7 +70,9 @@ jobs:
             librsvg2-dev \
             patchelf \
             libsoup2.4-dev \
-            libjavascriptcoregtk-4.0-dev
+            libjavascriptcoregtk-4.0-dev \
+            libx11-dev \
+            libxi-dev
 
       - name: Install frontend dependencies
         run: npm ci
