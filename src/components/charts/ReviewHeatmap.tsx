@@ -7,6 +7,7 @@ import { Heatmap } from "./Heatmap";
 const CARD_CAP_SECONDS = 600;
 
 export function ReviewHeatmap({ data, rows = [] }: { data: HeatmapCell[][]; rows?: ReviewActivityRow[] }) {
+  const totalDays = data.flat().length;
   return (
     <Heatmap
       data={data}
@@ -15,7 +16,7 @@ export function ReviewHeatmap({ data, rows = [] }: { data: HeatmapCell[][]; rows
         return cell.minutes === 0 ? `No reviews on ${date}` : `${formatMinutes(cell.minutes)} reviewing on ${date}`;
       }}
       metaSummary={(activeDays, total) =>
-        `${activeDays} review day${activeDays === 1 ? "" : "s"} · ${formatMinutes(total)} total in the last year`}
+        `${activeDays} review day${activeDays === 1 ? "" : "s"} · ${formatMinutes(total)} total over the last ${totalDays} days`}
       dayDetail={(cell) => {
         const day = format(cell.date, "yyyy-MM-dd");
         const dayRows = rows.filter((row) => format(parseISO(row.reviewed_at), "yyyy-MM-dd") === day);

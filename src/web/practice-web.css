@@ -92,3 +92,32 @@
 @media (min-width: 600px) {
   .pw-shell .rating-row { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* Version-skew notice — informational, non-blocking. */
+.pw-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, #d08a3e 40%, var(--border));
+  background: color-mix(in srgb, #d08a3e 12%, var(--surface));
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.pw-notice span { flex: 1; }
+.pw-notice-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.pw-notice-close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }

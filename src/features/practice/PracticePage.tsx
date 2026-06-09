@@ -83,8 +83,12 @@ export function PracticePage() {
   const [cardsThisRun, setCardsThisRun] = useState(0);
   const [topicCount, setTopicCount] = useState(0);
   const topicsRef = useRef<Set<string>>(new Set());
-  // 0 until the first interaction, so the clock starts when you engage, not on page open.
-  const lastActivityRef = useRef(0);
+  // Mirror `revealed` into a ref so the 1s timer tick reads it without re-subscribing.
+  const revealedRef = useRef(false);
+  revealedRef.current = revealed;
+  // When the current card was revealed — recall time is start→reveal, so the
+  // recorded per-card time (heatmap + topic stats) excludes answer-study time too.
+  const revealedAtRef = useRef<number | null>(null);
 
   // Topic-review entry: /practice?topic=<id>&review=<revisionId>. A review is a
   // frozen, recall-first set for one topic that, when finished, closes the due
@@ -144,11 +148,17 @@ export function PracticePage() {
     setRevealed(false);
     setAnswer("");
     setStartedAt(Date.now());
+    revealedAtRef.current = null;
     setEvalState({ status: "idle" });
     setNotes([]);
     setDraft("");
     setEditingId(null);
   }, [currentId]);
+
+  // Stamp the recall→reveal moment once, the first time this card is revealed.
+  useEffect(() => {
+    if (revealed && revealedAtRef.current === null) revealedAtRef.current = Date.now();
+  }, [revealed]);
 
   // Load this question's notes only once the answer is revealed — showing them
   // earlier would leak hints into the recall.
@@ -186,7 +196,8 @@ export function PracticePage() {
       await addQuestionNote({ questionId: current.id, body: pending, rating });
       setDraft("");
     }
-    await store.recordReview({ question: current, rating, userAnswer: answer, seconds: Math.round((Date.now() - startedAt) / 1000) });
+    const recallEnd = revealedAtRef.current ?? Date.now();
+    await store.recordReview({ question: current, rating, userAnswer: answer, seconds: Math.round((recallEnd - startedAt) / 1000) });
     setCardsThisRun((value) => value + 1);
     if (!topicsRef.current.has(current.topic_id)) {
       topicsRef.current.add(current.topic_id);
@@ -280,22 +291,16 @@ export function PracticePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, revealed, shortcutsEnabled]);
 
-  // Drive the live practice timer: count a second only when the page is visible
-  // and you've interacted within the last minute (idle/away time doesn't count).
+  // Live practice timer: counts the recall phase only. It pauses the moment you
+  // reveal the answer — so the time you spend understanding and correcting your
+  // mistake is "free" — and resumes when the next card flips back to the question.
+  // (Also pauses while the tab is hidden.)
   useEffect(() => {
-    const bump = () => { lastActivityRef.current = Date.now(); };
-    window.addEventListener("keydown", bump);
-    window.addEventListener("pointerdown", bump);
     const tick = window.setInterval(() => {
-      if (document.hidden) return;
-      if (Date.now() - lastActivityRef.current > 60_000) return;
+      if (document.hidden || revealedRef.current) return;
       setActiveSeconds((value) => value + 1);
     }, 1000);
-    return () => {
-      window.removeEventListener("keydown", bump);
-      window.removeEventListener("pointerdown", bump);
-      window.clearInterval(tick);
-    };
+    return () => window.clearInterval(tick);
   }, []);
 
   return (

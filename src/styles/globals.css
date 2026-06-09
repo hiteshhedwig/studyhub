@@ -1654,6 +1654,12 @@ article.card:hover {
   .main {
     padding: var(--space-5);
   }
+
+  /* Sidebar now stacks at the top, so the bottom-left corner is free again. */
+  .calc-fab,
+  .calc-panel {
+    left: var(--space-5);
+  }
 }
 
 /* ---------- Rich text (Markdown + KaTeX) ---------- */
@@ -2232,7 +2238,8 @@ article.card:hover {
 .calc-fab {
   position: fixed;
   bottom: var(--space-5);
-  left: var(--space-5);
+  /* Just past the 264px sidebar — clear of its footer note (left) and the toasts (right). */
+  left: calc(264px + var(--space-5));
   z-index: 101;
   display: grid;
   place-items: center;
@@ -2260,7 +2267,7 @@ article.card:hover {
 .calc-panel {
   position: fixed;
   bottom: calc(var(--space-5) + 56px);
-  left: var(--space-5);
+  left: calc(264px + var(--space-5));
   z-index: 101;
   width: 268px;
   padding: var(--space-3);

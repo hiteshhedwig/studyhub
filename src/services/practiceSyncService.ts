@@ -1,3 +1,4 @@
+import pkg from "../../package.json";
 import type { ExportedQuestion, ExportedTopicReview } from "../db/repositories/studyRepository";
 import type { ReviewAttempt } from "../db/repositories/types";
 
@@ -5,25 +6,30 @@ import type { ReviewAttempt } from "../db/repositories/types";
 // cloud drive). Questions go out, practice attempts come back.
 const QUESTIONS_TYPE = "studyhub-questions";
 const PRACTICE_TYPE = "studyhub-practice";
+// `version` is the sync-file *structure* version — bump only on a breaking format
+// change. `app_version` is the human Study Hub release that wrote the file; it's
+// purely informational so the web app can flag version skew, and is never a reason
+// to reject a file. Both stay backward compatible: old readers ignore app_version.
 const VERSION = 1;
+export const APP_VERSION: string = pkg.version;
 
-export type QuestionsFile = { type: typeof QUESTIONS_TYPE; version: number; exported_at: string; exam_date: string | null; questions: ExportedQuestion[]; topic_reviews: ExportedTopicReview[] };
+export type QuestionsFile = { type: typeof QUESTIONS_TYPE; version: number; app_version?: string; exported_at: string; exam_date: string | null; questions: ExportedQuestion[]; topic_reviews: ExportedTopicReview[] };
 // completed_topic_reviews carries the ids of the topic-review nudges the phone
 // finished, so the desktop can close those RevisionSchedule rows on merge. Without
 // it, attempts merge but topic reviews stay pending forever.
-export type PracticeFile = { type: typeof PRACTICE_TYPE; version: number; exported_at: string; attempts: ReviewAttempt[]; completed_topic_reviews: string[] };
+export type PracticeFile = { type: typeof PRACTICE_TYPE; version: number; app_version?: string; exported_at: string; attempts: ReviewAttempt[]; completed_topic_reviews: string[] };
 
 export function buildQuestionsFile(questions: ExportedQuestion[], examDate: string | null, topicReviews: ExportedTopicReview[] = []): string {
-  const file: QuestionsFile = { type: QUESTIONS_TYPE, version: VERSION, exported_at: new Date().toISOString(), exam_date: examDate, questions, topic_reviews: topicReviews };
+  const file: QuestionsFile = { type: QUESTIONS_TYPE, version: VERSION, app_version: APP_VERSION, exported_at: new Date().toISOString(), exam_date: examDate, questions, topic_reviews: topicReviews };
   return JSON.stringify(file, null, 2);
 }
 
 export function buildPracticeFile(attempts: ReviewAttempt[], completedTopicReviews: string[] = []): string {
-  const file: PracticeFile = { type: PRACTICE_TYPE, version: VERSION, exported_at: new Date().toISOString(), attempts, completed_topic_reviews: completedTopicReviews };
+  const file: PracticeFile = { type: PRACTICE_TYPE, version: VERSION, app_version: APP_VERSION, exported_at: new Date().toISOString(), attempts, completed_topic_reviews: completedTopicReviews };
   return JSON.stringify(file, null, 2);
 }
 
-export function parseQuestionsFile(text: string): { ok: true; questions: ExportedQuestion[]; examDate: string | null; topicReviews: ExportedTopicReview[] } | { ok: false; error: string } {
+export function parseQuestionsFile(text: string): { ok: true; questions: ExportedQuestion[]; examDate: string | null; topicReviews: ExportedTopicReview[]; appVersion: string | null } | { ok: false; error: string } {
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -37,7 +43,8 @@ export function parseQuestionsFile(text: string): { ok: true; questions: Exporte
   // topic_reviews is optional — files exported before this feature simply have no
   // topic reviews to surface, so default to an empty list rather than rejecting them.
   const topicReviews = Array.isArray(file.topic_reviews) ? (file.topic_reviews as ExportedTopicReview[]) : [];
-  return { ok: true, questions: file.questions as ExportedQuestion[], examDate: (file.exam_date as string | null | undefined) ?? null, topicReviews };
+  const appVersion = typeof file.app_version === "string" ? file.app_version : null;
+  return { ok: true, questions: file.questions as ExportedQuestion[], examDate: (file.exam_date as string | null | undefined) ?? null, topicReviews, appVersion };
 }
 
 export function parsePracticeFile(text: string): { ok: true; attempts: ReviewAttempt[]; completedTopicReviews: string[] } | { ok: false; error: string } {

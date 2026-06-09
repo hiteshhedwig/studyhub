@@ -596,14 +596,14 @@ export function TodayPage() {
       </section>
       <section style={{ marginTop: 20 }}>
         <div className="card grid">
-          <h2>Focus consistency · last year</h2>
+          <h2>Focus consistency over the last {heatmap.flat().length} days</h2>
           <p className="muted" style={{ margin: "-6px 0 0" }}>Time spent in focus sessions — learning new material.</p>
           <FocusHeatmap data={heatmap} sessions={store.sessions} />
         </div>
       </section>
       <section style={{ marginTop: 20 }}>
         <div className="card grid">
-          <h2>Review consistency · last year</h2>
+          <h2>Review consistency over the last {reviewMap.flat().length} days</h2>
           <p className="muted" style={{ margin: "-6px 0 0" }}>Time spent on active recall — flashcard practice and topic reviews.</p>
           <ReviewHeatmap data={reviewMap} rows={store.reviewActivity} />
         </div>

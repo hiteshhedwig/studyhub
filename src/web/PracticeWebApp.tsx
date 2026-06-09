@@ -1,13 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parseISO } from "date-fns";
-import { Download, FileUp, Sparkles } from "lucide-react";
+import { Download, FileUp, Sparkles, X } from "lucide-react";
 import { buildTopicReviewSet, isQuestionDue } from "../services/spacedRepetition";
 import { RichText } from "../components/ui/RichText";
 import { RatingButtons } from "../components/ui/RatingButtons";
-import { buildPracticeFile, openTextFile, parseQuestionsFile, practiceFileName, saveTextFile } from "../services/practiceSyncService";
+import { APP_VERSION, buildPracticeFile, openTextFile, parseQuestionsFile, practiceFileName, saveTextFile } from "../services/practiceSyncService";
 import { usePracticeStore } from "./practiceStore";
 import type { ReviewRating } from "../db/repositories/types";
 import type { ExportedQuestion } from "../db/repositories/studyRepository";
+
+// Recall time is bounded the same way the desktop bounds it (10 min/card), so an
+// abandoned card can't bloat the synced practice time.
+const CARD_CAP_SECONDS = 600;
+
+/** -1 / 0 / 1 — compares dotted versions like "0.1.28" numerically, segment by segment. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff < 0 ? -1 : 1;
+  }
+  return 0;
+}
 
 function shuffleWithSeed<T>(items: T[], seed: number): T[] {
   let state = seed || 1;
@@ -39,6 +54,11 @@ export function PracticeWebApp() {
   const [revealed, setRevealed] = useState(false);
   const [answer, setAnswer] = useState("");
   const [startedAt, setStartedAt] = useState(Date.now());
+  // When the current card was revealed — recorded recall time is start→reveal, to
+  // match the desktop (studying the answer afterwards isn't counted as practice time).
+  const revealedAtRef = useRef<number | null>(null);
+  // Non-blocking banner when the loaded file's Study Hub version differs from this web app.
+  const [versionNotice, setVersionNotice] = useState<string | null>(null);
   // Topic-review state: which topic's recall set is open, the frozen set itself
   // (built once on entry so mid-session rating changes don't reshuffle it), and the
   // topics finished this session — a local "✓ reviewed" cue (the desktop closes the
@@ -108,7 +128,13 @@ export function PracticeWebApp() {
     setRevealed(false);
     setAnswer("");
     setStartedAt(Date.now());
+    revealedAtRef.current = null;
   }, [currentId]);
+
+  // Stamp the recall→reveal moment once, the first time this card is revealed.
+  useEffect(() => {
+    if (revealed && revealedAtRef.current === null) revealedAtRef.current = Date.now();
+  }, [revealed]);
 
   // Mark a review finished once its last card has been rated/skipped.
   useEffect(() => {
@@ -155,6 +181,17 @@ export function PracticeWebApp() {
       window.alert(parsed.error);
       return;
     }
+    // Version skew is informational only — the file still loads. Warn if it was
+    // written by a different Study Hub release than this web app was built from.
+    if (parsed.appVersion && parsed.appVersion !== APP_VERSION) {
+      setVersionNotice(
+        compareVersions(parsed.appVersion, APP_VERSION) > 0
+          ? `This file is from a newer Study Hub (v${parsed.appVersion}); this web app is v${APP_VERSION}. It still works — update the web app for the latest features.`
+          : `This file is from an older Study Hub (v${parsed.appVersion}); this web app is v${APP_VERSION}. It still works; re-export from the desktop if anything looks off.`
+      );
+    } else {
+      setVersionNotice(null);
+    }
     load(parsed.questions, parsed.examDate, parsed.topicReviews);
     setIndex(0);
     setSeed(Date.now());
@@ -178,7 +215,8 @@ export function PracticeWebApp() {
 
   function rate(rating: ReviewRating) {
     if (!current) return;
-    record(current.id, rating, answer, Math.round((Date.now() - startedAt) / 1000));
+    const recallEnd = revealedAtRef.current ?? Date.now();
+    record(current.id, rating, answer, Math.min(Math.round((recallEnd - startedAt) / 1000), CARD_CAP_SECONDS));
     if (mode === "reviews" && activeReview) setReviewedCount((value) => value + 1);
     setIndex((value) => value + 1);
   }
@@ -209,6 +247,12 @@ export function PracticeWebApp() {
       </header>
 
       <main className="pw-main">
+        {versionNotice ? (
+          <div className="pw-notice" role="status">
+            <span>{versionNotice}</span>
+            <button type="button" className="pw-notice-close" aria-label="Dismiss" onClick={() => setVersionNotice(null)}><X size={15} /></button>
+          </div>
+        ) : null}
         <div className="pw-modes">
           <button className={`btn small ${mode === "due" ? "primary" : ""}`} type="button" onClick={() => { setMode("due"); exitReview(); }}>Due</button>
           <button className={`btn small ${mode === "all" ? "primary" : ""}`} type="button" onClick={() => { setMode("all"); exitReview(); }}>All</button>

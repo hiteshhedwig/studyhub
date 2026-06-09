@@ -13,6 +13,7 @@ function sessionMinutes(session: StudySession): number {
 }
 
 export function FocusHeatmap({ data, sessions = [] }: { data: HeatmapCell[][]; sessions?: StudySession[] }) {
+  const totalDays = data.flat().length;
   return (
     <Heatmap
       data={data}
@@ -22,7 +23,7 @@ export function FocusHeatmap({ data, sessions = [] }: { data: HeatmapCell[][]; s
         return cell.minutes === 0 ? `No focus on ${date}` : `${formatMinutes(cell.minutes)} focused on ${date}`;
       }}
       metaSummary={(activeDays, total) =>
-        `${activeDays} active day${activeDays === 1 ? "" : "s"} · ${formatMinutes(total)} total in the last year`}
+        `${activeDays} active day${activeDays === 1 ? "" : "s"} · ${formatMinutes(total)} total over the last ${totalDays} days`}
       dayDetail={(cell) => {
         const day = format(cell.date, "yyyy-MM-dd");
         const daySessions = sessions
