@@ -91,7 +91,8 @@ const emptyData: DashboardData = {
   questions: [],
   revisions: [],
   links: [],
-  notes: []
+  notes: [],
+  reviewActivity: []
 };
 
 // Shared with the desktop-cat window (separate webview) so it can quote your notes

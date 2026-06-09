@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Bookmark, BookmarkCheck, Check, CheckCircle2, Lock, NotebookPen, Pencil, Sparkles, Trash2, X } from "lucide-react";
+import { Bookmark, BookmarkCheck, Check, CheckCircle2, Lock, NotebookPen, Pencil, Sparkles, Timer, Trash2, X } from "lucide-react";
 import { format as formatDate, formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -14,6 +14,14 @@ import { useAppStore } from "../../store/appStore";
 import { addQuestionNote, deleteQuestionNote, getQuestionNotes, updateQuestionNote } from "../../db/repositories/studyRepository";
 import type { Question, QuestionNoteWithLock, ReviewRating } from "../../db/repositories/types";
 import { toast } from "../../store/uiStore";
+
+// Compact clock for the live practice pill: "3:45", or "1h 05m" past an hour.
+function formatClock(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 
 type Mode = "due" | "topic" | "weak" | "random" | "bookmarked";
 type TopicOrder = "original" | "shuffled";
@@ -68,6 +76,15 @@ export function PracticePage() {
   draftRef.current = draft;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+
+  // Live practice timer + run tally (this page-visit). Active time only — pauses
+  // when the tab is hidden or after a minute of no input, so it stays honest.
+  const [activeSeconds, setActiveSeconds] = useState(0);
+  const [cardsThisRun, setCardsThisRun] = useState(0);
+  const [topicCount, setTopicCount] = useState(0);
+  const topicsRef = useRef<Set<string>>(new Set());
+  // 0 until the first interaction, so the clock starts when you engage, not on page open.
+  const lastActivityRef = useRef(0);
 
   // Topic-review entry: /practice?topic=<id>&review=<revisionId>. A review is a
   // frozen, recall-first set for one topic that, when finished, closes the due
@@ -170,6 +187,11 @@ export function PracticePage() {
       setDraft("");
     }
     await store.recordReview({ question: current, rating, userAnswer: answer, seconds: Math.round((Date.now() - startedAt) / 1000) });
+    setCardsThisRun((value) => value + 1);
+    if (!topicsRef.current.has(current.topic_id)) {
+      topicsRef.current.add(current.topic_id);
+      setTopicCount(topicsRef.current.size);
+    }
     if (reviewActive) setReviewRatings((previous) => [...previous, rating]);
     setIndex((value) => value + 1);
   }
@@ -258,9 +280,36 @@ export function PracticePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, revealed, shortcutsEnabled]);
 
+  // Drive the live practice timer: count a second only when the page is visible
+  // and you've interacted within the last minute (idle/away time doesn't count).
+  useEffect(() => {
+    const bump = () => { lastActivityRef.current = Date.now(); };
+    window.addEventListener("keydown", bump);
+    window.addEventListener("pointerdown", bump);
+    const tick = window.setInterval(() => {
+      if (document.hidden) return;
+      if (Date.now() - lastActivityRef.current > 60_000) return;
+      setActiveSeconds((value) => value + 1);
+    }, 1000);
+    return () => {
+      window.removeEventListener("keydown", bump);
+      window.removeEventListener("pointerdown", bump);
+      window.clearInterval(tick);
+    };
+  }, []);
+
   return (
     <>
       <PageHeader title="Practice" eyebrow="Active recall first, answer second, rating last." />
+      {cardsThisRun > 0 || activeSeconds > 0 ? (
+        <div className="practice-timer" aria-live="polite">
+          <Timer size={14} aria-hidden="true" />
+          <span className="practice-timer-clock">{formatClock(activeSeconds)}</span>
+          <span className="muted">·</span>
+          <span>{cardsThisRun} card{cardsThisRun === 1 ? "" : "s"}</span>
+          {topicCount > 1 ? <><span className="muted">·</span><span>{topicCount} topics</span></> : null}
+        </div>
+      ) : null}
       {reviewActive ? (
         <div className="card split" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div>

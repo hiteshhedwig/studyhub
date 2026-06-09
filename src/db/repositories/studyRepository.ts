@@ -3,11 +3,17 @@ import { addDays, endOfDay, parseISO } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
 import { aggregateReviewRating, calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
 import { getActiveExamDate } from "../../services/preferencesService";
-import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionNote, QuestionNoteWithLock, QuestionSet, ResourceLink, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
+import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionNote, QuestionNoteWithLock, QuestionSet, ResourceLink, ReviewActivityRow, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
 import type { QuestionImport } from "../../services/importQuestions";
 
 const id = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
+
+// A single card can't legitimately take more than this — anything longer is the
+// card sitting open while you're away, so we clamp it before it skews practice time.
+export const PRACTICE_CARD_CAP_SECONDS = 600;
+// How far back the review heatmap looks (53 weeks ≈ a full GitHub-style year).
+const REVIEW_WINDOW_DAYS = 371;
 
 export type DashboardData = {
   categories: Category[];
@@ -19,6 +25,7 @@ export type DashboardData = {
   revisions: RevisionSchedule[];
   links: ResourceLink[];
   notes: Note[];
+  reviewActivity: ReviewActivityRow[];
 };
 
 async function withDb<T>(fn: (db: Database) => T | Promise<T>, persist = false): Promise<T> {
@@ -71,7 +78,22 @@ export async function loadDashboardData(): Promise<DashboardData> {
        ORDER BY due_at ASC`
     ),
     links: toRows<ResourceLink>(db, "SELECT * FROM ResourceLink ORDER BY created_at DESC"),
-    notes: toRows<Note>(db, "SELECT * FROM Note ORDER BY created_at DESC")
+    notes: toRows<Note>(db, "SELECT * FROM Note ORDER BY created_at DESC"),
+    // Each recall attempt (free practice AND topic-review) joined to its topic,
+    // AFK-capped, windowed to the last year — drives the review heatmap on Today.
+    reviewActivity: toRows<ReviewActivityRow>(
+      db,
+      `SELECT a.reviewed_at AS reviewed_at,
+              MIN(a.time_spent_seconds, ${PRACTICE_CARD_CAP_SECONDS}) AS seconds,
+              q.topic_id AS topic_id,
+              Topic.title AS topic_title
+       FROM ReviewAttempt a
+       JOIN Question q ON q.id = a.question_id
+       JOIN Topic ON Topic.id = q.topic_id
+       WHERE a.reviewed_at >= ?
+       ORDER BY a.reviewed_at`,
+      [new Date(Date.now() - REVIEW_WINDOW_DAYS * 86_400_000).toISOString()]
+    )
   }));
 }
 
@@ -506,7 +528,7 @@ export async function recordReview(input: { question: Question; rating: ReviewRa
       input.rating,
       input.userAnswer,
       input.rating === "good" || input.rating === "easy" ? 1 : 0,
-      input.seconds
+      Math.min(Math.max(0, Math.round(input.seconds)), PRACTICE_CARD_CAP_SECONDS)
     ]);
     db.run(
       `UPDATE Question

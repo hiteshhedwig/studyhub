@@ -1,5 +1,9 @@
 import { eachDayOfInterval, endOfWeek, format, isSameDay, parseISO, startOfDay, startOfWeek, subDays, subWeeks } from "date-fns";
-import type { Question, RevisionSchedule, ReviewRating, StudySession, Topic } from "../db/repositories/types";
+import type { Question, RevisionSchedule, ReviewActivityRow, ReviewAttempt, ReviewRating, StudySession, Topic } from "../db/repositories/types";
+
+// Mirrors the repo's per-card AFK clamp, applied again at read time so any
+// pre-cap historical attempts (stored before the clamp existed) stay honest.
+const CARD_CAP_SECONDS = 600;
 
 const RATING_SCALE: Record<ReviewRating, number> = { forgot: 1, hard: 2, good: 3, easy: 4 };
 
@@ -62,6 +66,53 @@ export function focusHeatmap(sessions: StudySession[], weeks = 53, now = new Dat
     }));
   }
   return cols;
+}
+
+// Same Sun→Sat grid as the focus heatmap, but intensity = minutes spent on
+// active recall (free practice + topic reviews). Buckets are scaled down since
+// a solid review day is minutes, not hours.
+export function reviewHeatmap(rows: ReviewActivityRow[], weeks = 53, now = new Date()): HeatmapCell[][] {
+  const end = endOfWeek(now, { weekStartsOn: 0 });
+  const start = startOfWeek(subWeeks(now, weeks - 1), { weekStartsOn: 0 });
+  const seconds = new Map<string, number>();
+  rows.forEach((row) => {
+    const key = format(parseISO(row.reviewed_at), "yyyy-MM-dd");
+    seconds.set(key, (seconds.get(key) ?? 0) + Math.min(row.seconds, CARD_CAP_SECONDS));
+  });
+  const allDays = eachDayOfInterval({ start, end });
+  const cols: HeatmapCell[][] = [];
+  for (let i = 0; i < allDays.length; i += 7) {
+    cols.push(allDays.slice(i, i + 7).map((day) => {
+      const minutes = Math.round((seconds.get(format(day, "yyyy-MM-dd")) ?? 0) / 60);
+      const bucket: HeatmapCell["bucket"] = minutes === 0 ? 0 : minutes <= 5 ? 1 : minutes <= 15 ? 2 : minutes <= 30 ? 3 : 4;
+      return { date: day, minutes, bucket };
+    }));
+  }
+  return cols;
+}
+
+export type TopicPracticeStats = {
+  cards: number;
+  minutes: number;
+  accuracy: number | null;
+  activeDays: number;
+  lastPracticedAt: string | null;
+};
+
+/** All-time practice rollup for one topic, derived from its review attempts. */
+export function topicPracticeStats(attempts: ReviewAttempt[]): TopicPracticeStats {
+  if (attempts.length === 0) return { cards: 0, minutes: 0, accuracy: null, activeDays: 0, lastPracticedAt: null };
+  const totalSeconds = attempts.reduce((sum, a) => sum + Math.min(a.time_spent_seconds, CARD_CAP_SECONDS), 0);
+  const correct = attempts.reduce((sum, a) => sum + (a.was_correct ? 1 : 0), 0);
+  const days = new Set(attempts.map((a) => format(parseISO(a.reviewed_at), "yyyy-MM-dd")));
+  const lastPracticedAt = attempts.reduce((latest, a) => (a.reviewed_at > latest ? a.reviewed_at : latest), attempts[0].reviewed_at);
+  return {
+    cards: attempts.length,
+    minutes: Math.round(totalSeconds / 60),
+    accuracy: Math.round((correct / attempts.length) * 100),
+    activeDays: days.size,
+    lastPracticedAt
+  };
 }
 
 export function dailyStudySeries(sessions: StudySession[], days = 14) {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronLeft, ExternalLink, FileText, Minus, MessageSquare, Trash2, Video } from "lucide-react";
-import { topicHasLateRevision, topicTrend, type Trend } from "../../services/statsService";
+import { topicHasLateRevision, topicPracticeStats, topicTrend, type Trend } from "../../services/statsService";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -135,6 +135,7 @@ export function TopicDetailPage() {
   const topicQuestions = questions.filter((item) => item.topic_id === topic.id);
   const topicRevisions = revisions.filter((item) => item.topic_id === topic.id);
   const topicLinks = links.filter((item) => item.topic_id === topic.id);
+  const practice = topicPracticeStats(attempts);
 
   return (
     <>
@@ -144,6 +145,12 @@ export function TopicDetailPage() {
         <div className="card stat"><span className="muted">Mastery</span><strong>{topic.mastery_score}%</strong></div>
         <div className="card stat"><span className="muted">Focused time</span><strong>{formatMinutes(totalMinutes)}</strong></div>
         <div className="card stat"><span className="muted">Next revision</span><strong>{topic.next_revision_at ? formatDistanceToNow(parseISO(topic.next_revision_at), { addSuffix: true }) : "None"}</strong></div>
+      </section>
+      <section className="grid four" style={{ marginTop: 20 }}>
+        <div className="card stat"><span className="muted">Practiced time</span><strong>{formatMinutes(practice.minutes)}</strong></div>
+        <div className="card stat"><span className="muted">Cards reviewed</span><strong>{practice.cards}</strong></div>
+        <div className="card stat"><span className="muted">Recall accuracy</span><strong>{practice.accuracy === null ? "—" : `${practice.accuracy}%`}</strong></div>
+        <div className="card stat"><span className="muted">Last practiced</span><strong>{practice.lastPracticedAt ? formatDistanceToNow(parseISO(practice.lastPracticedAt), { addSuffix: true }) : "Never"}</strong></div>
       </section>
       <section className="grid two" style={{ marginTop: 20 }}>
         <div className="card">

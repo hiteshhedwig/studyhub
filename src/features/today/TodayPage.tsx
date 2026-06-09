@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Link } from "react-router-dom";
 import { differenceInCalendarDays, format, isPast, isToday, parseISO } from "date-fns";
 import { ChevronRight, Flame, Layers2, Paperclip, Play, Square, Target } from "lucide-react";
-import { currentFocusStreak, focusHeatmap } from "../../services/statsService";
+import { currentFocusStreak, focusHeatmap, reviewHeatmap } from "../../services/statsService";
 import { isQuestionDue } from "../../services/spacedRepetition";
 import { FocusHeatmap } from "../../components/charts/FocusHeatmap";
+import { ReviewHeatmap } from "../../components/charts/ReviewHeatmap";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { TimerRing } from "../../components/ui/TimerRing";
@@ -101,6 +102,7 @@ export function TodayPage() {
   const extendedToday = todayMinutes > 0; // the flame only "breathes" on days you keep the streak alive
   const neverSeenCount = store.questions.filter((question) => question.review_count === 0).length;
   const heatmap = useMemo(() => focusHeatmap(store.sessions), [store.sessions]);
+  const reviewMap = useMemo(() => reviewHeatmap(store.reviewActivity), [store.reviewActivity]);
   const [cycleRatings, setCycleRatings] = useState<{ hard: number; ok: number; easy: number }>({ hard: 0, ok: 0, easy: 0 });
   const [ratedThisPrompt, setRatedThisPrompt] = useState(false);
 
@@ -595,7 +597,15 @@ export function TodayPage() {
       <section style={{ marginTop: 20 }}>
         <div className="card grid">
           <h2>Focus consistency · last year</h2>
+          <p className="muted" style={{ margin: "-6px 0 0" }}>Time spent in focus sessions — learning new material.</p>
           <FocusHeatmap data={heatmap} sessions={store.sessions} />
+        </div>
+      </section>
+      <section style={{ marginTop: 20 }}>
+        <div className="card grid">
+          <h2>Review consistency · last year</h2>
+          <p className="muted" style={{ margin: "-6px 0 0" }}>Time spent on active recall — flashcard practice and topic reviews.</p>
+          <ReviewHeatmap data={reviewMap} rows={store.reviewActivity} />
         </div>
       </section>
     </>

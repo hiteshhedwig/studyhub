@@ -319,6 +319,10 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 /* ---------- Card ---------- */
 .card {
   background: var(--surface);
@@ -640,7 +644,7 @@ article.card:hover {
 .heatmap-months {
   display: flex;
   gap: 3px;
-  padding-left: 28px; /* aligns with first week column past the day labels (24px + 4px margin) */
+  padding-left: 31px; /* aligns with first week column: 24px labels + 4px margin + 3px flex gap */
   font-size: 10px;
   color: var(--text-secondary);
 }
@@ -1642,7 +1646,8 @@ article.card:hover {
 
   .nav-list,
   .grid.two,
-  .grid.three {
+  .grid.three,
+  .grid.four {
     grid-template-columns: 1fr;
   }
 
@@ -2111,6 +2116,23 @@ article.card:hover {
   max-height: 180px;
   overflow-y: auto;
 }
+
+/* ---------- Practice live timer ---------- */
+.practice-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.practice-timer svg { color: var(--accent); }
+.practice-timer-clock { font-weight: 600; color: var(--text-primary); }
 
 /* ---------- Practice notes-to-self ---------- */
 .qnote {

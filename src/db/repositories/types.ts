@@ -98,6 +98,9 @@ export type QuestionNote = {
 // `editable` is derived (not stored): a note seals once its question has been
 // reviewed at/after the note was written, so prior-encounter notes are read-only.
 export type QuestionNoteWithLock = QuestionNote & { editable: boolean };
+// One capped review attempt, joined to its topic — windowed to ~the last year
+// and fed to the practice/review heatmap on Today. `seconds` is already AFK-capped.
+export type ReviewActivityRow = { reviewed_at: string; seconds: number; topic_id: string; topic_title: string };
 export type NoteItem = { id: string; text: string; done: boolean };
 // (Note + NoteItem are imported by studyRepository.ts)
 export type Note = { id: string; title: string; items_json: string; color: string; created_at: string; updated_at: string };
