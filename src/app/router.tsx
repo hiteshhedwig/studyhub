@@ -11,9 +11,11 @@ import { RevisionsPage } from "../features/revisions/RevisionsPage";
 import { StatsPage } from "../features/stats/StatsPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { MiniOverlay } from "../features/overlay/MiniOverlay";
+import { CatPet } from "../features/catpet/CatPet";
 
 export const router = createHashRouter([
   { path: "/overlay", element: <MiniOverlay /> },
+  { path: "/catpet", element: <CatPet /> },
   {
     path: "/",
     element: <App />,

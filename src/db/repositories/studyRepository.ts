@@ -3,7 +3,7 @@ import { addDays, endOfDay, parseISO } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
 import { aggregateReviewRating, calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
 import { getActiveExamDate } from "../../services/preferencesService";
-import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionSet, ResourceLink, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
+import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionNote, QuestionNoteWithLock, QuestionSet, ResourceLink, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
 import type { QuestionImport } from "../../services/importQuestions";
 
 const id = () => crypto.randomUUID();
@@ -209,6 +209,10 @@ export async function endSession(input: {
   scheduleRevisions: boolean;
 }) {
   return withDb((db) => {
+    const session = one<StudySession>(db, "SELECT * FROM StudySession WHERE id = ?", [input.sessionId]);
+    // Idempotency guard: a double-submit (e.g. double-click on "Finish") must not
+    // wrap up the session twice, which would insert a second full set of revisions.
+    if (!session || session.ended_at) return;
     const endedAt = now();
     db.run(
       `UPDATE StudySession
@@ -216,8 +220,6 @@ export async function endSession(input: {
        WHERE id = ?`,
       [endedAt, input.reflection, input.understanding, input.difficulty, input.chatgptLink ?? null, input.sessionId]
     );
-    const session = one<StudySession>(db, "SELECT * FROM StudySession WHERE id = ?", [input.sessionId]);
-    if (!session) return;
     if (input.chatgptLink) {
       db.run("INSERT INTO ResourceLink VALUES (?, ?, ?, ?, ?, ?, ?)", [id(), session.topic_id, session.id, "ChatGPT conversation", input.chatgptLink, "chatgpt", now()]);
     }
@@ -415,6 +417,65 @@ export async function getTopicAttempts(topicId: string): Promise<ReviewAttempt[]
       [topicId]
     )
   );
+}
+
+// A note is locked once any review attempt for its question lands at/after the
+// note's creation time — i.e. the moment you rate that encounter, it becomes
+// frozen history. Drafts written before rating (no such attempt yet) stay open.
+export async function getQuestionNotes(questionId: string): Promise<QuestionNoteWithLock[]> {
+  return withDb((db) =>
+    toRows<QuestionNote & { locked: number }>(
+      db,
+      `SELECT n.*, EXISTS(
+         SELECT 1 FROM ReviewAttempt a
+         WHERE a.question_id = n.question_id AND a.reviewed_at >= n.created_at
+       ) AS locked
+       FROM QuestionNote n
+       WHERE n.question_id = ?
+       ORDER BY n.created_at DESC`,
+      [questionId]
+    ).map(({ locked, ...note }) => ({ ...note, editable: locked === 0 }))
+  );
+}
+
+export async function addQuestionNote(input: { questionId: string; body: string; rating?: ReviewRating | null }): Promise<QuestionNoteWithLock | null> {
+  return withDb((db) => {
+    const body = input.body.trim();
+    if (!body) return null;
+    const ts = now();
+    const noteId = id();
+    db.run("INSERT INTO QuestionNote VALUES (?, ?, ?, ?, ?, ?)", [noteId, input.questionId, body, input.rating ?? null, ts, ts]);
+    return { id: noteId, question_id: input.questionId, body, rating: input.rating ?? null, created_at: ts, updated_at: ts, editable: true };
+  }, true);
+}
+
+/** True once the note has sealed (its question was reviewed at/after it was written). */
+function noteIsLocked(db: Database, note: QuestionNote): boolean {
+  const row = one<{ locked: number }>(
+    db,
+    "SELECT EXISTS(SELECT 1 FROM ReviewAttempt WHERE question_id = ? AND reviewed_at >= ?) AS locked",
+    [note.question_id, note.created_at]
+  );
+  return Boolean(row?.locked);
+}
+
+export async function updateQuestionNote(noteId: string, body: string): Promise<{ ok: boolean }> {
+  return withDb((db) => {
+    const note = one<QuestionNote>(db, "SELECT * FROM QuestionNote WHERE id = ?", [noteId]);
+    const trimmed = body.trim();
+    if (!note || !trimmed || noteIsLocked(db, note)) return { ok: false };
+    db.run("UPDATE QuestionNote SET body = ?, updated_at = ? WHERE id = ?", [trimmed, now(), noteId]);
+    return { ok: true };
+  }, true);
+}
+
+export async function deleteQuestionNote(noteId: string): Promise<{ ok: boolean }> {
+  return withDb((db) => {
+    const note = one<QuestionNote>(db, "SELECT * FROM QuestionNote WHERE id = ?", [noteId]);
+    if (!note || noteIsLocked(db, note)) return { ok: false };
+    db.run("DELETE FROM QuestionNote WHERE id = ?", [noteId]);
+    return { ok: true };
+  }, true);
 }
 
 export async function recordReview(input: { question: Question; rating: ReviewRating; userAnswer: string; seconds: number }) {

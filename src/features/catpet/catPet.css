@@ -1,0 +1,172 @@
+/* The cat overlay window is fully transparent and click-through; only the cat
+   pixels are ever visible. */
+.catpet-body {
+  margin: 0;
+  background: transparent !important;
+  overflow: hidden;
+  cursor: default;
+}
+
+.catpet-stage {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+/* Positioned by the engine via transform (translate3d) every frame. */
+.cat-root {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+}
+
+.cat-sprite {
+  width: 72px;
+  height: 80px;
+  display: grid;
+  place-items: end center;
+  transform-origin: bottom center;
+}
+
+/* Frames share a 144x160 bottom-centered canvas, shown at 72x80 (crisp on HiDPI).
+   These are detailed sprites, so smooth scaling beats nearest-neighbour here. */
+.cat-img {
+  width: 72px;
+  height: 80px;
+  object-fit: contain;
+  object-position: bottom center;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.35));
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Facing: frames are authored facing right; flip the wrapper to go left so the
+   pose animations (which transform the inner .cat-img) still compose cleanly. */
+.cat-sprite.face-left {
+  transform: scaleX(-1);
+}
+
+/* Sit: a slow, calm breathing bob. */
+.cat-sprite.pose-sit .cat-img {
+  animation: cat-breathe 2.4s ease-in-out infinite;
+}
+
+/* Walk: a gentle two-beat bounce. */
+.cat-sprite.pose-walk .cat-img {
+  animation: cat-walk 0.42s steps(2, end) infinite;
+}
+
+/* Run: faster, lower, leaning into the bolt. */
+.cat-sprite.pose-run .cat-img {
+  animation: cat-run 0.2s steps(2, end) infinite;
+}
+
+/* Sleep: curled low with slow, deep breathing. */
+.cat-sprite.pose-sleep .cat-img {
+  transform: translateY(2px) scaleY(0.97);
+  animation: cat-sleep 3.4s ease-in-out infinite;
+}
+
+@keyframes cat-sleep {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(0.5px) scaleY(0.985); }
+}
+
+/* Floating "z z z" while asleep — three letters drifting up and fading, staggered. */
+.cat-zzz {
+  position: absolute;
+  left: 42px;
+  top: -2px;
+  pointer-events: none;
+}
+
+.cat-zzz span {
+  position: absolute;
+  font-family: var(--font-sans, system-ui), sans-serif;
+  font-weight: 700;
+  color: #cdd6e4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  animation: cat-zzz-rise 3s ease-in-out infinite;
+}
+
+.cat-zzz span:nth-child(1) { font-size: 11px; animation-delay: 0s; }
+.cat-zzz span:nth-child(2) { font-size: 14px; animation-delay: 1s; }
+.cat-zzz span:nth-child(3) { font-size: 17px; animation-delay: 2s; }
+
+@keyframes cat-zzz-rise {
+  0% { opacity: 0; transform: translate(0, 4px) rotate(-6deg); }
+  30% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(10px, -22px) rotate(8deg); }
+}
+
+/* Pixelated "cloud quote" of a pinned note while the cat naps. Grows to the LEFT
+   of the cat (toward screen interior) so it stays on screen, and sits below the
+   Zzz so the two never collide. The double box-shadow fakes a chunky pixel border. */
+.cat-bubble {
+  position: absolute;
+  top: 14px;
+  left: -10px;
+  transform: translateX(-100%);
+  max-width: 220px;
+  padding: 7px 9px;
+  background: #f7f3e8;
+  color: #2b2b2b;
+  border: 2px solid #2b2b2b;
+  font-family: ui-monospace, "DejaVu Sans Mono", "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  white-space: normal;
+  word-break: break-word;
+  -webkit-font-smoothing: none;
+  box-shadow:
+    0 0 0 2px #f7f3e8,
+    0 0 0 4px #2b2b2b,
+    5px 6px 0 0 rgba(0, 0, 0, 0.22);
+  animation: cat-bubble-in 320ms ease-out;
+}
+
+/* Pixel tail pointing right, toward the sleeping cat. */
+.cat-bubble::after {
+  content: "";
+  position: absolute;
+  right: -8px;
+  top: 16px;
+  width: 6px;
+  height: 6px;
+  background: #f7f3e8;
+  border-right: 2px solid #2b2b2b;
+  border-bottom: 2px solid #2b2b2b;
+  transform: rotate(-45deg);
+  box-shadow: 2px 2px 0 0 #f7f3e8;
+}
+
+@keyframes cat-bubble-in {
+  0% { opacity: 0; transform: translateX(-100%) translateY(5px); }
+  100% { opacity: 1; transform: translateX(-100%) translateY(0); }
+}
+
+@keyframes cat-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.97) translateY(1px); }
+}
+
+@keyframes cat-walk {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes cat-run {
+  0% { transform: translateY(0) scaleX(1.04); }
+  50% { transform: translateY(-1px) scaleX(0.98); }
+  100% { transform: translateY(0) scaleX(1.04); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-svg { animation: none !important; }
+}

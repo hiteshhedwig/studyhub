@@ -3,6 +3,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { useAppStore } from "../../store/appStore";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { closeMiniOverlay, openMiniOverlay } from "../../services/overlayWindowService";
+import { openCatPet, closeCatPet } from "../../services/catPetService";
 import { exportDatabaseToFile, importDatabaseFromFile } from "../../services/backupService";
 import { SOUND_VOLUME_MAX, getVolume, previewBell, setVolume, unlockAudio } from "../../services/soundService";
 import { POMODORO_PRESETS, getDefaultPomodoroId, setDefaultPomodoro, getPracticeShortcutsEnabled, setPracticeShortcutsEnabled, getAiEvalConfig, setAiEvalEnabled, setAiApiKey, setAiModel, DEFAULT_AI_MODEL, getExamConfig, setExamEnabled, setExamDate, type PomodoroPresetId } from "../../services/preferencesService";
@@ -159,6 +160,17 @@ export function SettingsPage() {
     }
   }
 
+  async function openCat() {
+    const result = await openCatPet();
+    if (result.ok) toast.success("Here, kitty kitty…");
+    else toast.danger(result.error);
+  }
+
+  async function hideCat() {
+    await closeCatPet();
+    toast.info("The cat curled up offscreen.");
+  }
+
   return (
     <>
       <PageHeader title="Settings" eyebrow="Local preferences and database care." />
@@ -294,6 +306,15 @@ export function SettingsPage() {
             </select>
           </label>
           <div className="button-row"><button className="btn" onClick={openOverlay}>Open Mini Overlay</button></div>
+        </div>
+
+        <div className="card grid">
+          <h2>Study Buddy <span className="muted" style={{ fontSize: "var(--text-xs)", fontWeight: 600 }}>beta</span></h2>
+          <p className="muted">A little pixel cat that wanders your screen and scampers off when the cursor gets close. It lives above your work but never catches a click.</p>
+          <div className="button-row">
+            <button className="btn primary" onClick={openCat}>Let the cat out</button>
+            <button className="btn" onClick={hideCat}>Send it home</button>
+          </div>
         </div>
 
         <div className="card grid">

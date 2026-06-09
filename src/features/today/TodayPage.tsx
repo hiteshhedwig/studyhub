@@ -77,6 +77,10 @@ export function TodayPage() {
   const [chatgptLink, setChatgptLink] = useState("");
   const [schedule, setSchedule] = useState(true);
   const [recordedCycles, setRecordedCycles] = useState(timer.completedFocusCycles);
+  // One-shot "cycle complete" flare on the ring + cycle pill. The ref tracks the
+  // last-seen count so we fire only on a fresh increment, not on every render.
+  const [cyclePulse, setCyclePulse] = useState(false);
+  const lastCelebratedCycles = useRef(timer.completedFocusCycles);
 
   const todaySessions = store.sessions.filter((session) => isToday(parseISO(session.started_at)));
   const dueRevisions = store.revisions.filter((revision) => revision.status === "pending" && isToday(parseISO(revision.due_at)));
@@ -131,7 +135,22 @@ export function TodayPage() {
     setRecordedCycles(timer.completedFocusCycles);
     setNotes("");
     setCycleRatings({ hard: 0, ok: 0, easy: 0 });
+    lastCelebratedCycles.current = timer.completedFocusCycles;
+    setCyclePulse(false);
   }, [timer.activeSessionId]);
+
+  // Fire the cycle-complete flare the moment a focus block lands, then clear it so
+  // the one-shot CSS animation can re-run on the next cycle.
+  useEffect(() => {
+    if (timer.completedFocusCycles <= lastCelebratedCycles.current) {
+      lastCelebratedCycles.current = timer.completedFocusCycles;
+      return;
+    }
+    lastCelebratedCycles.current = timer.completedFocusCycles;
+    setCyclePulse(true);
+    const id = window.setTimeout(() => setCyclePulse(false), 920);
+    return () => window.clearTimeout(id);
+  }, [timer.completedFocusCycles]);
 
   // Reset the "rated this prompt" flag whenever a new awaitingNextPhase appears.
   useEffect(() => {
@@ -329,7 +348,7 @@ export function TodayPage() {
                   <h2>{store.activeSession.title}</h2>
                   <p className="muted">{timer.topicTitle || store.activeSession.topic_title || "Current topic"}</p>
                 </div>
-                <span className="pill">{timer.totalCycles ? `Cycle ${timer.currentCycle} / ${timer.totalCycles}` : `Cycle ${timer.currentCycle}`}</span>
+                <span className={`pill${cyclePulse ? " pop" : ""}`}>{timer.totalCycles ? `Cycle ${timer.currentCycle} / ${timer.totalCycles}` : `Cycle ${timer.currentCycle}`}</span>
               </div>
               <div className="split">
                 <span className="pill">{statusLabel(timer)}</span>
@@ -340,6 +359,7 @@ export function TodayPage() {
                 time={`${minutes}:${seconds}`}
                 label={statusLabel(timer)}
                 state={!timer.isRunning ? "paused" : timer.phase === "break" || timer.phase === "long_break" ? "break" : "focus"}
+                pulse={cyclePulse}
               />
               {timer.awaitingFinalChoice ? (
                 <div className="card">

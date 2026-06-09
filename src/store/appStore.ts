@@ -94,10 +94,34 @@ const emptyData: DashboardData = {
   notes: []
 };
 
+// Shared with the desktop-cat window (separate webview) so it can quote your notes
+// while it naps, without opening the DB itself. localStorage is shared across Tauri
+// windows, and a `storage` event lets the cat pick up edits live.
+const NOTES_CACHE_KEY = "study-hub-notes-cache";
+
+/** Flatten a note into the human-readable lines worth quoting (title + item texts). */
+function noteToQuotes(note: { title: string; items_json: string }): string[] {
+  const lines: string[] = [];
+  if (note.title.trim()) lines.push(note.title.trim());
+  try {
+    for (const item of JSON.parse(note.items_json) as { text?: string }[]) {
+      if (item?.text?.trim()) lines.push(item.text.trim());
+    }
+  } catch {
+    // malformed items_json — the title (if any) still counts
+  }
+  return lines.map((line) => (line.length > 90 ? `${line.slice(0, 89)}…` : line));
+}
+
 async function refresh(set: (partial: Partial<AppState>) => void) {
   const data = await loadDashboardData();
   const activeSession = data.sessions.find((session) => !session.ended_at) ?? null;
   set({ ...data, activeSession, isLoading: false, error: null });
+  try {
+    localStorage.setItem(NOTES_CACHE_KEY, JSON.stringify(data.notes.flatMap(noteToQuotes)));
+  } catch {
+    // non-fatal — the cat simply has nothing to quote
+  }
 }
 
 function wrap<T extends (...args: never[]) => Promise<unknown>>(set: (partial: Partial<AppState>) => void, fn: T) {

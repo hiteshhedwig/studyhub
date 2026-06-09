@@ -8,7 +8,8 @@ const GROUPS: Group[] = [
     title: "Global",
     shortcuts: [
       { keys: ["?"], label: "Show this shortcut list" },
-      { keys: ["Space"], label: "Pause / resume the running timer" }
+      { keys: ["Space"], label: "Pause / resume the running timer" },
+      { keys: ["Alt+C"], label: "Open / close the calculator" }
     ]
   },
   {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Bookmark, BookmarkCheck, CheckCircle2, Sparkles, X } from "lucide-react";
+import { Bookmark, BookmarkCheck, Check, CheckCircle2, Lock, NotebookPen, Pencil, Sparkles, Trash2, X } from "lucide-react";
+import { format as formatDate, formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RatingButtons } from "../../components/ui/RatingButtons";
@@ -10,7 +11,8 @@ import { getPracticeShortcutsEnabled, getAiEvalConfig, getActiveExamDate } from 
 import { aggregateReviewRating, buildTopicReviewSet, isQuestionDue } from "../../services/spacedRepetition";
 import { evaluateAnswer, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
 import { useAppStore } from "../../store/appStore";
-import type { Question, ReviewRating } from "../../db/repositories/types";
+import { addQuestionNote, deleteQuestionNote, getQuestionNotes, updateQuestionNote } from "../../db/repositories/studyRepository";
+import type { Question, QuestionNoteWithLock, ReviewRating } from "../../db/repositories/types";
 import { toast } from "../../store/uiStore";
 
 type Mode = "due" | "topic" | "weak" | "random" | "bookmarked";
@@ -57,6 +59,15 @@ export function PracticePage() {
   const [evalState, setEvalState] = useState<{ status: "idle" | "loading" | "done" | "error"; result?: EvaluationResult; error?: string }>({ status: "idle" });
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
   const aiAvailable = aiConfig.enabled && Boolean(aiConfig.apiKey);
+
+  // Per-question "notes to self": prior-encounter notes (read-only) plus the
+  // draft you're writing now, which seals into history the moment you rate.
+  const [notes, setNotes] = useState<QuestionNoteWithLock[]>([]);
+  const [draft, setDraft] = useState("");
+  const draftRef = useRef("");
+  draftRef.current = draft;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
 
   // Topic-review entry: /practice?topic=<id>&review=<revisionId>. A review is a
   // frozen, recall-first set for one topic that, when finished, closes the due
@@ -117,7 +128,23 @@ export function PracticePage() {
     setAnswer("");
     setStartedAt(Date.now());
     setEvalState({ status: "idle" });
+    setNotes([]);
+    setDraft("");
+    setEditingId(null);
   }, [currentId]);
+
+  // Load this question's notes only once the answer is revealed — showing them
+  // earlier would leak hints into the recall.
+  useEffect(() => {
+    if (!revealed || !currentId) return;
+    let cancelled = false;
+    void getQuestionNotes(currentId).then((rows) => {
+      if (!cancelled) setNotes(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [revealed, currentId]);
 
   async function runEvaluation() {
     if (!current) return;
@@ -135,9 +162,42 @@ export function PracticePage() {
 
   async function rate(rating: "forgot" | "hard" | "good" | "easy") {
     if (!current) return;
+    // Persist an unsaved draft *before* the attempt lands so it seals as history
+    // with this rating attached (read via draftRef to dodge stale keyboard closures).
+    const pending = draftRef.current.trim();
+    if (pending) {
+      await addQuestionNote({ questionId: current.id, body: pending, rating });
+      setDraft("");
+    }
     await store.recordReview({ question: current, rating, userAnswer: answer, seconds: Math.round((Date.now() - startedAt) / 1000) });
     if (reviewActive) setReviewRatings((previous) => [...previous, rating]);
     setIndex((value) => value + 1);
+  }
+
+  async function saveDraft() {
+    if (!current || !draft.trim()) return;
+    const note = await addQuestionNote({ questionId: current.id, body: draft });
+    if (note) {
+      setNotes((previous) => [note, ...previous]);
+      setDraft("");
+    }
+  }
+
+  async function saveEdit(noteId: string) {
+    const result = await updateQuestionNote(noteId, editingText);
+    if (result.ok) {
+      const trimmed = editingText.trim();
+      setNotes((previous) => previous.map((note) => (note.id === noteId ? { ...note, body: trimmed } : note)));
+      setEditingId(null);
+    } else {
+      toast.danger("That note is locked — it sealed when you rated this question earlier.");
+    }
+  }
+
+  async function removeNote(noteId: string) {
+    const result = await deleteQuestionNote(noteId);
+    if (result.ok) setNotes((previous) => previous.filter((note) => note.id !== noteId));
+    else toast.danger("That note is locked and can't be deleted.");
   }
 
   // One-tap confirm after recall: closes the due topic review, logging the
@@ -299,6 +359,69 @@ export function PracticePage() {
             ) : (
               <>
                 <div className="card"><h3>Answer</h3><RichText>{current.answer}</RichText></div>
+                <div className="qnote">
+                  <div className="qnote-head">
+                    <NotebookPen size={15} aria-hidden="true" />
+                    <span>Notes to self</span>
+                    {notes.length ? <span className="qnote-count">{notes.length}</span> : null}
+                  </div>
+                  {notes.length ? (
+                    <ul className="qnote-list">
+                      {notes.map((note) => (
+                        <li key={note.id} className={`qnote-item${note.editable ? " editable" : ""}`}>
+                          {editingId === note.id ? (
+                            <div className="qnote-edit">
+                              <textarea
+                                className="textarea"
+                                value={editingText}
+                                autoFocus
+                                onChange={(event) => setEditingText(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveEdit(note.id); }
+                                  if (event.key === "Escape") { event.preventDefault(); setEditingId(null); }
+                                }}
+                              />
+                              <div className="qnote-actions">
+                                <button className="btn small" type="button" onClick={() => void saveEdit(note.id)}><Check size={14} /> Save</button>
+                                <button className="btn small ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <RichText className="qnote-body">{note.body}</RichText>
+                              <div className="qnote-meta">
+                                {note.rating ? <span className={`qnote-chip ${note.rating}`}>{note.rating}</span> : null}
+                                <span className="muted" title={formatDate(parseISO(note.created_at), "MMM d, yyyy · HH:mm")}>
+                                  {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true })}
+                                </span>
+                                {note.editable ? (
+                                  <span className="qnote-actions">
+                                    <button className="qnote-icon" type="button" aria-label="Edit note" onClick={() => { setEditingId(note.id); setEditingText(note.body); }}><Pencil size={13} /></button>
+                                    <button className="qnote-icon" type="button" aria-label="Delete note" onClick={() => void removeNote(note.id)}><Trash2 size={13} /></button>
+                                  </span>
+                                ) : (
+                                  <span className="qnote-lock" title="Sealed — written in an earlier review"><Lock size={12} aria-hidden="true" /></span>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="qnote-add">
+                    <textarea
+                      className="textarea"
+                      placeholder={notes.length ? "Add today's note — what tripped you up vs. last time?" : "What tripped you up? (seals when you rate)"}
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveDraft(); }
+                      }}
+                    />
+                    <button className="btn small" type="button" disabled={!draft.trim()} onClick={() => void saveDraft()}>Save note</button>
+                  </div>
+                </div>
                 {aiAvailable && evalState.status === "idle" ? (
                   <button className="btn" type="button" onClick={() => void runEvaluation()} style={{ justifySelf: "start" }}><Sparkles size={16} />Evaluate with AI</button>
                 ) : null}

@@ -3,7 +3,9 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { isPast, isToday, parseISO } from "date-fns";
 import { BarChart3, BookMarked, CalendarClock, CheckCircle2, ClipboardList, FolderInput, GraduationCap, Home, Library, MessageSquareText, Settings, TimerReset } from "lucide-react";
 import { useAppStore } from "../../store/appStore";
+import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { KeyboardShortcuts } from "../ui/KeyboardShortcuts";
+import { Calculator } from "../ui/Calculator";
 
 const navGroups = [
   {
@@ -42,6 +44,18 @@ export function AppLayout() {
   }).length;
   const badgeFor = (to: string): number | undefined => (to === "/revisions" && revisionAlertCount > 0 ? revisionAlertCount : undefined);
 
+  // Spotlight the timer while a focus block is actively ticking — the nav chrome
+  // dims so the session is the hero. Pausing, a break, or any end-of-phase prompt
+  // lifts it again (you're likely about to navigate then).
+  const focusActive = useSessionTimerStore(
+    (state) =>
+      Boolean(state.activeSessionId) &&
+      state.isRunning &&
+      state.phase === "focus" &&
+      !state.awaitingNextPhase &&
+      !state.awaitingFinalChoice
+  );
+
   const navRef = useRef<HTMLElement>(null);
   const location = useLocation();
   const [indicator, setIndicator] = useState<{ top: number; height: number; left: number; width: number } | null>(null);
@@ -66,7 +80,7 @@ export function AppLayout() {
   }, [location.pathname]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${focusActive ? " session-focused" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
@@ -120,6 +134,7 @@ export function AppLayout() {
         <Outlet />
       </main>
       <KeyboardShortcuts />
+      <Calculator />
     </div>
   );
 }

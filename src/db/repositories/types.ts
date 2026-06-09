@@ -87,6 +87,17 @@ export type ReviewAttempt = {
   was_correct: number;
   time_spent_seconds: number;
 };
+export type QuestionNote = {
+  id: string;
+  question_id: string;
+  body: string;
+  rating: ReviewRating | null;
+  created_at: string;
+  updated_at: string;
+};
+// `editable` is derived (not stored): a note seals once its question has been
+// reviewed at/after the note was written, so prior-encounter notes are read-only.
+export type QuestionNoteWithLock = QuestionNote & { editable: boolean };
 export type NoteItem = { id: string; text: string; done: boolean };
 // (Note + NoteItem are imported by studyRepository.ts)
 export type Note = { id: string; title: string; items_json: string; color: string; created_at: string; updated_at: string };

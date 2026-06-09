@@ -109,6 +109,16 @@ CREATE TABLE IF NOT EXISTS Bookmark (
   FOREIGN KEY(question_id) REFERENCES Question(id)
 );
 
+CREATE TABLE IF NOT EXISTS QuestionNote (
+  id TEXT PRIMARY KEY,
+  question_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  rating TEXT CHECK(rating IN ('forgot', 'hard', 'good', 'easy') OR rating IS NULL),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(question_id) REFERENCES Question(id)
+);
+
 CREATE TABLE IF NOT EXISTS Note (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL DEFAULT '',

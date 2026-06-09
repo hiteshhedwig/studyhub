@@ -7,6 +7,8 @@ type TimerRingProps = {
   label: string;
   /** visual state for ring color */
   state?: "focus" | "break" | "paused";
+  /** one-shot flare when a focus cycle completes */
+  pulse?: boolean;
 };
 
 const SIZE = 240;
@@ -14,11 +16,11 @@ const STROKE = 12;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-export function TimerRing({ progress, time, label, state = "focus" }: TimerRingProps) {
+export function TimerRing({ progress, time, label, state = "focus", pulse = false }: TimerRingProps) {
   const clamped = Math.max(0, Math.min(100, progress));
   const offset = CIRCUMFERENCE * (1 - clamped / 100);
   return (
-    <div className={`timer-ring ${state}`} role="timer" aria-live="polite">
+    <div className={`timer-ring ${state}${pulse ? " pulse" : ""}`} role="timer" aria-live="polite">
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width={SIZE} height={SIZE} aria-hidden="true">
         <circle className="ring-track" cx={SIZE / 2} cy={SIZE / 2} r={RADIUS} />
         <circle
