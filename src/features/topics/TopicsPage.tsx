@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronLeft, ExternalLink, FileText, Minus, MessageSquare, Trash2, Video } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronLeft, ExternalLink, FileText, Minus, MessageSquare, Pencil, Trash2, Video } from "lucide-react";
 import { sessionFocusMinutes, topicHasLateRevision, topicPracticeStats, topicTrend, type Trend } from "../../services/statsService";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -10,7 +10,7 @@ import { useAppStore } from "../../store/appStore";
 import { confirmDialog, toast } from "../../store/uiStore";
 import { openLocalPath } from "../../services/fileStorage";
 import { RevisionHistoryTimeline, summarizeRevisions } from "../../components/ui/RevisionHistoryTimeline";
-import type { ReviewAttempt } from "../../db/repositories/types";
+import type { ReviewAttempt, Topic } from "../../db/repositories/types";
 import { formatMinutes } from "../../utils/formatTime";
 
 function TrendArrow({ trend }: { trend: Trend }) {
@@ -27,6 +27,28 @@ export function TopicsPage() {
   const store = useAppStore();
   const navigate = useNavigate();
   const { topics, sessions, questions, revisions } = store;
+  const [editingId, setEditingId] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
+
+  function startRename(topicId: string, title: string) {
+    setEditingId(topicId);
+    setDraftTitle(title);
+  }
+
+  async function saveTitle(topic: Topic) {
+    const next = draftTitle.trim();
+    if (!next) {
+      toast.warning("Topic name cannot be empty.");
+      return;
+    }
+    if (next === topic.title) {
+      setEditingId("");
+      return;
+    }
+    await store.updateTopic({ id: topic.id, title: next, description: topic.description, status: topic.status, mastery_score: topic.mastery_score });
+    setEditingId("");
+    toast.success("Topic renamed.");
+  }
 
   async function deleteTopic(topicId: string, title: string) {
     const ok = await confirmDialog({
@@ -72,18 +94,47 @@ export function TopicsPage() {
             >
               <div className="split">
                 <span className="pill" style={{ borderColor: topic.category_color }}>{topic.category_name}</span>
-                <button
-                  className="btn danger icon"
-                  aria-label={`Delete ${topic.title}`}
-                  onClick={(event) => { event.stopPropagation(); void deleteTopic(topic.id, topic.title); }}
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div className="button-row">
+                  <button
+                    className="btn icon"
+                    aria-label={`Rename ${topic.title}`}
+                    onClick={(event) => { event.stopPropagation(); startRename(topic.id, topic.title); }}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    className="btn danger icon"
+                    aria-label={`Delete ${topic.title}`}
+                    onClick={(event) => { event.stopPropagation(); void deleteTopic(topic.id, topic.title); }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-              <h2 style={{ margin: "8px 0 0 0", display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="truncate">{topic.title}</span>
-                {trend ? <TrendArrow trend={trend} /> : null}
-              </h2>
+              {editingId === topic.id ? (
+                <div className="button-row" style={{ margin: "8px 0 0 0" }} onClick={(event) => event.stopPropagation()}>
+                  <input
+                    className="input"
+                    value={draftTitle}
+                    autoFocus
+                    aria-label="Topic name"
+                    onChange={(event) => setDraftTitle(event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => {
+                      event.stopPropagation();
+                      if (event.key === "Enter") void saveTitle(topic);
+                      if (event.key === "Escape") setEditingId("");
+                    }}
+                  />
+                  <button className="btn primary" onClick={(event) => { event.stopPropagation(); void saveTitle(topic); }}>Save</button>
+                  <button className="btn" onClick={(event) => { event.stopPropagation(); setEditingId(""); }}>Cancel</button>
+                </div>
+              ) : (
+                <h2 style={{ margin: "8px 0 0 0", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="truncate">{topic.title}</span>
+                  {trend ? <TrendArrow trend={trend} /> : null}
+                </h2>
+              )}
               <p className="muted">{topic.description || "No description yet."}</p>
               <div className="progress"><span style={{ width: `${topic.mastery_score}%` }} /></div>
               <div className="split muted" style={{ fontSize: "var(--text-sm)" }}>
