@@ -15,7 +15,7 @@ import { useAppStore } from "../../store/appStore";
 import { useSessionTimerStore } from "../../store/sessionTimerStore";
 import { inferFileType, pickLocalFile, readTextFile } from "../../services/fileStorage";
 import { parseQuestionImport } from "../../services/importQuestions";
-import { formatSessionPlanSummary } from "../../services/timerLogic";
+import { formatSessionPlanSummary, totalFocusSeconds } from "../../services/timerLogic";
 import { openMiniOverlay } from "../../services/overlayWindowService";
 import { unlockAudio } from "../../services/soundService";
 import { useTimerSounds } from "../../hooks/useTimerSounds";
@@ -82,9 +82,6 @@ export function TodayPage() {
   // last-seen count so we fire only on a fresh increment, not on every render.
   const [cyclePulse, setCyclePulse] = useState(false);
   const lastCelebratedCycles = useRef(timer.completedFocusCycles);
-  // Focus seconds captured at the moment the session is ended, so a partial
-  // (unfinished) focus phase is still credited as study time on wrap-up.
-  const pendingFocusSecondsRef = useRef(0);
 
   const todaySessions = store.sessions.filter((session) => isToday(parseISO(session.started_at)));
   const dueRevisions = store.revisions.filter((revision) => revision.status === "pending" && isToday(parseISO(revision.due_at)));
@@ -209,7 +206,6 @@ export function TodayPage() {
       resolvedTopicTitle = topic.title;
     }
     const session = await store.startSession({ topicId, title: title || "Focused study", focusMinutes: focus, breakMinutes, notes });
-    pendingFocusSecondsRef.current = 0; // fresh session — no carried-over partial focus
     timer.startTimer({
       activeSessionId: session.id,
       topicTitle: resolvedTopicTitle || "Current topic",
@@ -258,26 +254,15 @@ export function TodayPage() {
     }
   }
 
-  // Focus seconds elapsed in an in-progress (running or paused) focus phase. Zero
-  // at any phase boundary (remaining 0 / awaiting prompts) — those already counted
-  // as a full pomodoro, so this only ever credits genuinely partial time.
-  function liveFocusSeconds(): number {
-    if (timer.remainingSeconds <= 0 || timer.awaitingFinalChoice || timer.awaitingNextPhase) return 0;
-    const inFocus = timer.phase === "focus" || (timer.phase === "paused" && timer.previousPhase === "focus");
-    return inFocus ? Math.max(0, timer.totalPhaseSeconds - timer.remainingSeconds) : 0;
-  }
-
-  // Capture the partial focus time, then end the timer (which resets the phase).
-  function endTimerWithCapture() {
-    pendingFocusSecondsRef.current = liveFocusSeconds();
-    timer.endTimer();
-  }
-
   async function finishSession() {
     if (!store.activeSession) return;
+    const matchesTimer = timer.activeSessionId === store.activeSession.id;
     // Reconcile the pomodoro count to the timer's authoritative total (so cycles
-    // completed while away from this page aren't lost) and bank any partial focus.
-    const completedCycles = timer.activeSessionId === store.activeSession.id ? timer.completedFocusCycles : undefined;
+    // completed while away from this page aren't lost). The session is already in
+    // its "completed" phase here, so the timer's banked focus seconds are the real,
+    // whole-session total — used directly as the focus time studied.
+    const completedCycles = matchesTimer ? timer.completedFocusCycles : undefined;
+    const focusSeconds = matchesTimer ? totalFocusSeconds(timer) : undefined;
     await store.endSession({
       sessionId: store.activeSession.id,
       reflection,
@@ -286,9 +271,8 @@ export function TodayPage() {
       chatgptLink,
       scheduleRevisions: schedule,
       completedCycles,
-      extraFocusSeconds: pendingFocusSecondsRef.current
+      focusSeconds
     });
-    pendingFocusSecondsRef.current = 0;
     timer.endTimer();
     setNotes("");
     setReflection("");
@@ -304,7 +288,7 @@ export function TodayPage() {
       confirmLabel: "Go to wrap-up"
     });
     if (!ok) return;
-    endTimerWithCapture();
+    timer.endTimer();
   }
 
   async function handleOpenOverlay() {
@@ -402,7 +386,7 @@ export function TodayPage() {
                   <div className="button-row">
                     <button className="btn" onClick={timer.continueAnotherCycle}>Continue another cycle</button>
                     <button className="btn" onClick={timer.takeLongBreak}>Take long break</button>
-                    <button className="btn primary" onClick={endTimerWithCapture}>End and wrap up</button>
+                    <button className="btn primary" onClick={timer.endTimer}>End and wrap up</button>
                   </div>
                 </div>
               ) : timer.awaitingNextPhase ? (

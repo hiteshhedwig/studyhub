@@ -4,14 +4,14 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { StudyTimeChart } from "../../components/charts/StudyTimeChart";
 import { RevisionHistoryTimeline, summarizeRevisions } from "../../components/ui/RevisionHistoryTimeline";
 import { useAppStore } from "../../store/appStore";
-import { dailyStudySeries, rankedTopics, recallAccuracy, revisionCompletionRate } from "../../services/statsService";
+import { dailyStudySeries, rankedTopics, recallAccuracy, revisionCompletionRate, sessionFocusMinutes } from "../../services/statsService";
 import { formatMinutes } from "../../utils/formatTime";
 import type { RevisionSchedule } from "../../db/repositories/types";
 
 export function StatsPage() {
   const { sessions, revisions, questions, topics } = useAppStore();
   const series = dailyStudySeries(sessions, 14);
-  const totalMinutes = sessions.reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
+  const totalMinutes = sessions.reduce((sum, session) => sum + sessionFocusMinutes(session), 0);
   const pomodoros = sessions.reduce((sum, session) => sum + session.pomodoros_completed, 0);
   const answered = questions.reduce((sum, question) => sum + question.review_count, 0);
   const missed = revisions.filter((revision) => revision.status === "missed").length;
@@ -46,7 +46,7 @@ export function StatsPage() {
         title: topic.title,
         minutes: sessions
           .filter((session) => session.topic_id === topic.id)
-          .reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0)
+          .reduce((sum, session) => sum + sessionFocusMinutes(session), 0)
       }))
       .filter((entry) => entry.minutes > 0)
       .sort((a, b) => b.minutes - a.minutes);

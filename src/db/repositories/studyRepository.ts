@@ -234,9 +234,11 @@ export async function endSession(input: {
   // The timer's authoritative full-pomodoro count, reconciled here so cycles
   // completed while away from the Today page (which records them) aren't lost.
   completedCycles?: number;
-  // Focus seconds from an unfinished final phase, credited so ending mid-pomodoro
-  // still records the time actually studied.
-  extraFocusSeconds?: number;
+  // The timer's authoritative *total* focus seconds for the whole session (real
+  // elapsed focus time, completed + partial). Stored as the session's focus total
+  // so any end path — overlay, early-end, natural completion — records what was
+  // actually studied, not just whole completed pomodoros.
+  focusSeconds?: number;
 }) {
   return withDb((db) => {
     const session = one<StudySession>(db, "SELECT * FROM StudySession WHERE id = ?", [input.sessionId]);
@@ -249,12 +251,18 @@ export async function endSession(input: {
     const pomodoros = typeof input.completedCycles === "number"
       ? Math.max(session.pomodoros_completed, Math.round(input.completedCycles))
       : session.pomodoros_completed;
-    const extraSeconds = Math.max(0, Math.round(input.extraFocusSeconds ?? 0));
+    // Total focus seconds studied. Floor it at the completed pomodoros' full length
+    // so finished cycles always credit their whole duration even if the live timer
+    // total drifted low; fall back to the pomodoro length when no total was passed.
+    const pomodoroSeconds = pomodoros * session.focus_minutes * 60;
+    const focusSeconds = typeof input.focusSeconds === "number"
+      ? Math.max(pomodoroSeconds, Math.round(input.focusSeconds))
+      : Math.max(pomodoroSeconds, session.extra_focus_seconds ?? 0);
     db.run(
       `UPDATE StudySession
        SET ended_at = ?, reflection = ?, understanding_rating = ?, difficulty_rating = ?, chatgpt_link = ?, pomodoros_completed = ?, extra_focus_seconds = ?
        WHERE id = ?`,
-      [endedAt, input.reflection, input.understanding, input.difficulty, input.chatgptLink ?? null, pomodoros, extraSeconds, input.sessionId]
+      [endedAt, input.reflection, input.understanding, input.difficulty, input.chatgptLink ?? null, pomodoros, focusSeconds, input.sessionId]
     );
     if (input.chatgptLink) {
       db.run("INSERT INTO ResourceLink VALUES (?, ?, ?, ?, ?, ?, ?)", [id(), session.topic_id, session.id, "ChatGPT conversation", input.chatgptLink, "chatgpt", now()]);

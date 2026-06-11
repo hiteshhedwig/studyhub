@@ -102,7 +102,8 @@ function snapshotFromState(state: TimerState): SessionTimerSnapshot {
     pausedAt,
     awaitingFinalChoice,
     awaitingNextPhase,
-    completedFocusCycles
+    completedFocusCycles,
+    focusSecondsBanked
   } = state;
   return {
     activeSessionId,
@@ -126,7 +127,8 @@ function snapshotFromState(state: TimerState): SessionTimerSnapshot {
     pausedAt,
     awaitingFinalChoice,
     awaitingNextPhase,
-    completedFocusCycles
+    completedFocusCycles,
+    focusSecondsBanked
   };
 }
 

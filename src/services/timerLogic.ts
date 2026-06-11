@@ -39,8 +39,28 @@ export function initialTimerSnapshot(now = Date.now()): SessionTimerSnapshot {
     pausedAt: null,
     awaitingFinalChoice: false,
     awaitingNextPhase: null,
-    completedFocusCycles: 0
+    completedFocusCycles: 0,
+    focusSecondsBanked: 0
   };
+}
+
+// Focus seconds elapsed in the *in-progress* focus phase (running or paused),
+// clamped to the phase length. Zero outside a focus phase — including once a focus
+// phase has completed (isRunning false, awaiting the next phase) so it is never
+// double-counted on top of what completeCurrentPhase already banked.
+export function liveFocusElapsed(snapshot: SessionTimerSnapshot, now = Date.now()): number {
+  if (snapshot.phase === "focus" && snapshot.isRunning) {
+    return clamp(snapshot.totalPhaseSeconds - remainingFromTimestamp(snapshot, now), 0, snapshot.totalPhaseSeconds);
+  }
+  if (snapshot.phase === "paused" && snapshot.previousPhase === "focus") {
+    return clamp(snapshot.totalPhaseSeconds - snapshot.remainingSeconds, 0, snapshot.totalPhaseSeconds);
+  }
+  return 0;
+}
+
+/** Authoritative total focus seconds for the session: banked + the live phase. */
+export function totalFocusSeconds(snapshot: SessionTimerSnapshot, now = Date.now()): number {
+  return snapshot.focusSecondsBanked + liveFocusElapsed(snapshot, now);
 }
 
 export function createSessionTimer(input: StartTimerInput): SessionTimerSnapshot {
@@ -128,19 +148,22 @@ function startPhase(snapshot: SessionTimerSnapshot, phase: TimerPhase, seconds: 
 // `awaitingFinalChoice`.
 export function completeCurrentPhase(
   snapshot: SessionTimerSnapshot,
-  options: { countFocusCycle?: boolean } = {}
+  options: { countFocusCycle?: boolean } = {},
+  now = Date.now()
 ): SessionTimerSnapshot {
   if (!snapshot.activeSessionId) return snapshot;
   // A focus cycle counts as a finished pomodoro only when the phase actually ran
   // its course. Skipping a focus block advances the session but must NOT bank a
-  // cycle — otherwise the skipped (mostly-unspent) focus minutes inflate stats.
+  // cycle — otherwise the skipped (mostly-unspent) focus minutes inflate the
+  // pomodoro count. The real focus *time* studied is still banked either way.
   const countFocusCycle = options.countFocusCycle ?? true;
   const stopped = { ...snapshot, remainingSeconds: 0, phaseStartedAt: null, isRunning: false };
 
   if (snapshot.phase === "focus") {
     const completed = countFocusCycle ? snapshot.completedFocusCycles + 1 : snapshot.completedFocusCycles;
+    const focusSecondsBanked = snapshot.focusSecondsBanked + liveFocusElapsed(snapshot, now);
     const isFinalPlannedCycle = snapshot.sessionMode === "planned" && snapshot.currentCycle >= snapshot.plannedCycles;
-    const base = { ...stopped, completedFocusCycles: completed };
+    const base = { ...stopped, completedFocusCycles: completed, focusSecondsBanked };
     if (isFinalPlannedCycle) {
       if (snapshot.afterFinalCycleBehavior === "ask") return { ...base, phase: "paused", awaitingFinalChoice: true, awaitingNextPhase: null };
       if (snapshot.afterFinalCycleBehavior === "wrap_up") return { ...base, awaitingNextPhase: "completed" };
@@ -195,8 +218,11 @@ export function takeLongBreak(snapshot: SessionTimerSnapshot, now = Date.now()):
   return startPhase(snapshot, "long_break", snapshot.longBreakMinutes * 60, now);
 }
 
-export function completeSessionSnapshot(snapshot: SessionTimerSnapshot): SessionTimerSnapshot {
-  return { ...snapshot, phase: "completed", isRunning: false, remainingSeconds: 0, phaseStartedAt: null, awaitingFinalChoice: false, awaitingNextPhase: null };
+export function completeSessionSnapshot(snapshot: SessionTimerSnapshot, now = Date.now()): SessionTimerSnapshot {
+  // Bank whatever focus time the in-progress phase has accrued before tearing the
+  // timer down, so ending mid-focus (from any window/button) still records it.
+  const focusSecondsBanked = snapshot.focusSecondsBanked + liveFocusElapsed(snapshot, now);
+  return { ...snapshot, focusSecondsBanked, phase: "completed", isRunning: false, remainingSeconds: 0, phaseStartedAt: null, awaitingFinalChoice: false, awaitingNextPhase: null };
 }
 
 export function snapshotFocusSeconds(snapshot: SessionTimerSnapshot) {

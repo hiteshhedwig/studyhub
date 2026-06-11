@@ -25,6 +25,11 @@ export type SessionTimerSnapshot = {
   awaitingFinalChoice: boolean;
   awaitingNextPhase: "break" | "focus" | "long_break" | "completed" | null;
   completedFocusCycles: number;
+  // Real focus wall-clock seconds banked from focus phases already left behind
+  // (completed, skipped, or ended). The in-progress focus phase is added live on
+  // top of this — see totalFocusSeconds — so ending mid-pomodoro still credits the
+  // time actually studied, regardless of which button ends the session.
+  focusSecondsBanked: number;
 };
 
 export type OverlayPreferences = {

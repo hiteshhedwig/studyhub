@@ -10,11 +10,14 @@ const RATING_SCALE: Record<ReviewRating, number> = { forgot: 1, hard: 2, good: 3
 export type Trend = "up" | "flat" | "down";
 
 /**
- * Total study minutes for a session: completed pomodoros (focus_minutes each)
- * plus any partial focus time banked when the session was ended mid-pomodoro.
+ * Total study minutes for a session. `extra_focus_seconds` holds the real total
+ * focus time studied (whole + partial cycles), so it's the source of truth. Legacy
+ * rows that predate it (and weren't backfilled) fall back to whole completed
+ * pomodoros × the focus length.
  */
 export function sessionFocusMinutes(session: { focus_minutes: number; pomodoros_completed: number; extra_focus_seconds?: number }): number {
-  return session.focus_minutes * session.pomodoros_completed + (session.extra_focus_seconds ?? 0) / 60;
+  const totalSeconds = session.extra_focus_seconds ?? 0;
+  return totalSeconds > 0 ? totalSeconds / 60 : session.focus_minutes * session.pomodoros_completed;
 }
 
 export function topicTrend(topicId: string, revisions: RevisionSchedule[]): Trend | null {
@@ -129,7 +132,7 @@ export function dailyStudySeries(sessions: StudySession[], days = 14) {
   return eachDayOfInterval({ start, end }).map((day) => {
     const minutes = sessions
       .filter((session) => session.ended_at && isSameDay(parseISO(session.started_at), day))
-      .reduce((sum, session) => sum + session.focus_minutes * session.pomodoros_completed, 0);
+      .reduce((sum, session) => sum + sessionFocusMinutes(session), 0);
     return { label: format(day, "MMM d"), minutes };
   });
 }
