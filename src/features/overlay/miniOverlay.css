@@ -163,6 +163,7 @@
 .overlay-controls button,
 .overlay-actions button,
 .overlay-final-actions button,
+.overlay-extend-row button,
 .overlay-complete button,
 .overlay-close {
   color: var(--text-primary);
@@ -178,6 +179,7 @@
 .overlay-controls button:hover,
 .overlay-actions button:hover,
 .overlay-final-actions button:hover,
+.overlay-extend-row button:hover,
 .overlay-complete button:hover,
 .overlay-close:hover {
   background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface-soft));
@@ -203,8 +205,26 @@
 }
 
 .overlay-actions button:active,
-.overlay-final-actions button:active {
+.overlay-final-actions button:active,
+.overlay-extend-row button:active {
   transform: scale(0.97);
+}
+
+/* Compact "+N min" extension row shown under the focus-end prompt. */
+.overlay-extend-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.overlay-extend-row button {
+  flex: 1;
+  height: 30px;
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 0.74rem;
+  font-weight: 550;
+  border-radius: 9px;
 }
 
 .overlay-actions button.overlay-primary {

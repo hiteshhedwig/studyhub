@@ -5,6 +5,7 @@ import {
   confirmNextPhase,
   continueAnotherCycle,
   createSessionTimer,
+  extendFocus,
   formatSessionPlanSummary,
   pauseSnapshot,
   remainingFromTimestamp,
@@ -144,5 +145,61 @@ describe("timer logic", () => {
     expect(focusTwoEnd.phase).toBe("paused");
     expect(continueAnotherCycle(focusTwoEnd, 4_204_000).currentCycle).toBe(3);
     expect(takeLongBreak(focusTwoEnd, 4_204_000).phase).toBe("long_break");
+  });
+
+  it("extends focus from the break prompt: banks the time but adds no pomodoro, then re-prompts", () => {
+    const ended = completeCurrentPhase(createSessionTimer(baseInput), {}, 1_801_000); // full 30m cycle
+    expect(ended.awaitingNextPhase).toBe("break");
+    expect(ended.completedFocusCycles).toBe(1);
+    expect(ended.focusSecondsBanked).toBe(1800);
+
+    const extended = extendFocus(ended, 5, 2_000_000);
+    expect(extended.phase).toBe("focus");
+    expect(extended.isRunning).toBe(true);
+    expect(extended.isExtension).toBe(true);
+    expect(extended.totalPhaseSeconds).toBe(300);
+    expect(extended.currentCycle).toBe(1); // same cycle, not a new one
+    expect(extended.completedFocusCycles).toBe(1);
+    expect(extended.awaitingNextPhase).toBeNull();
+
+    const afterExt = completeCurrentPhase(extended, {}, 2_300_000); // run the full +5 min
+    expect(afterExt.completedFocusCycles).toBe(1); // still no extra pomodoro
+    expect(afterExt.focusSecondsBanked).toBe(2100); // 1800 + 300 extension seconds
+    expect(afterExt.awaitingNextPhase).toBe("break"); // returns to the same prompt
+    expect(afterExt.isExtension).toBe(false);
+    expect(totalFocusSeconds(afterExt)).toBe(2100);
+  });
+
+  it("extends from the final-cycle choice and returns to that same choice", () => {
+    const done = completeCurrentPhase(createSessionTimer({ ...baseInput, plannedCycles: 1 }), {}, 1_801_000);
+    expect(done.awaitingFinalChoice).toBe(true);
+    expect(done.completedFocusCycles).toBe(1);
+
+    const extended = extendFocus(done, 10, 2_000_000);
+    expect(extended.isExtension).toBe(true);
+    expect(extended.awaitingFinalChoice).toBe(false);
+    expect(extended.phase).toBe("focus");
+
+    const back = completeCurrentPhase(extended, {}, 2_600_000); // full +10 min
+    expect(back.awaitingFinalChoice).toBe(true); // back to the final choice
+    expect(back.completedFocusCycles).toBe(1); // unchanged
+    expect(back.focusSecondsBanked).toBe(2400); // 1800 + 600
+  });
+
+  it("ending mid-extension still credits the partial focus time", () => {
+    const ended = completeCurrentPhase(createSessionTimer(baseInput), {}, 1_801_000);
+    const extended = extendFocus(ended, 10, 2_000_000);
+    const done = completeSessionSnapshot(extended, 2_180_000); // ended 3 min into the +10
+    expect(done.phase).toBe("completed");
+    expect(totalFocusSeconds(done)).toBe(1800 + 180); // base cycle + 3 min of extension
+    expect(done.completedFocusCycles).toBe(1);
+  });
+
+  it("is a no-op when not at a focus-end prompt", () => {
+    const running = createSessionTimer(baseInput);
+    expect(extendFocus(running, 5)).toBe(running); // mid-focus: ignored
+    const breakDone = completeCurrentPhase(confirmNextPhase(completeCurrentPhase(createSessionTimer(baseInput), {}, 1_801_000), 1_801_000), {}, 2_401_000);
+    expect(breakDone.awaitingNextPhase).toBe("focus");
+    expect(extendFocus(breakDone, 5)).toBe(breakDone); // after a break: ignored
   });
 });

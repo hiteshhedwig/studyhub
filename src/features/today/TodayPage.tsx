@@ -24,6 +24,9 @@ import { confirmDialog, toast } from "../../store/uiStore";
 import type { AfterFinalCycleBehavior, SessionMode } from "../../types/timer";
 import { formatMinutes } from "../../utils/formatTime";
 
+// "Keep going" extension lengths offered when a focus cycle ends.
+const EXTEND_OPTIONS = [5, 10, 15];
+
 function statusLabel(timer: { phase: string; awaitingFinalChoice: boolean; awaitingNextPhase: string | null }) {
   if (timer.awaitingFinalChoice) return "Cycle complete";
   if (timer.awaitingNextPhase === "break") return "Focus done";
@@ -388,6 +391,12 @@ export function TodayPage() {
                     <button className="btn" onClick={timer.takeLongBreak}>Take long break</button>
                     <button className="btn primary" onClick={timer.endTimer}>End and wrap up</button>
                   </div>
+                  <div className="cycle-rate-row">
+                    <span className="muted" style={{ fontSize: "var(--text-xs)" }}>In flow? Add focus time</span>
+                    {EXTEND_OPTIONS.map((m) => (
+                      <button type="button" key={m} className="btn small" onClick={() => timer.extendFocus(m)}>+{m} min</button>
+                    ))}
+                  </div>
                 </div>
               ) : timer.awaitingNextPhase ? (
                 <div className="card">
@@ -404,6 +413,14 @@ export function TodayPage() {
                         <button type="button" className="btn small rating easy" onClick={() => rateCycle("easy")}>Easy</button>
                       </div>
                     )
+                  ) : null}
+                  {timer.awaitingNextPhase !== "focus" ? (
+                    <div className="cycle-rate-row">
+                      <span className="muted" style={{ fontSize: "var(--text-xs)" }}>Keep going?</span>
+                      {EXTEND_OPTIONS.map((m) => (
+                        <button type="button" key={m} className="btn small" onClick={() => timer.extendFocus(m)}>+{m} min</button>
+                      ))}
+                    </div>
                   ) : null}
                   <div className="button-row">
                     <button className="btn primary" onClick={timer.confirmNextPhase}>{nextPhaseActionLabel(timer.awaitingNextPhase)}</button>

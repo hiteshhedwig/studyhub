@@ -40,7 +40,8 @@ export function initialTimerSnapshot(now = Date.now()): SessionTimerSnapshot {
     awaitingFinalChoice: false,
     awaitingNextPhase: null,
     completedFocusCycles: 0,
-    focusSecondsBanked: 0
+    focusSecondsBanked: 0,
+    isExtension: false
   };
 }
 
@@ -138,7 +139,8 @@ function startPhase(snapshot: SessionTimerSnapshot, phase: TimerPhase, seconds: 
     phaseStartedAt: now,
     pausedAt: null,
     awaitingFinalChoice: false,
-    awaitingNextPhase: null
+    awaitingNextPhase: null,
+    isExtension: false
   };
 }
 
@@ -156,8 +158,12 @@ export function completeCurrentPhase(
   // its course. Skipping a focus block advances the session but must NOT bank a
   // cycle — otherwise the skipped (mostly-unspent) focus minutes inflate the
   // pomodoro count. The real focus *time* studied is still banked either way.
-  const countFocusCycle = options.countFocusCycle ?? true;
-  const stopped = { ...snapshot, remainingSeconds: 0, phaseStartedAt: null, isRunning: false };
+  // An extension (+N min) focus phase banks its time but is never a new pomodoro —
+  // the cycle was already credited when the base focus phase finished.
+  const countFocusCycle = (options.countFocusCycle ?? true) && !snapshot.isExtension;
+  // Clear the extension flag on the way out: whatever comes next (the break/long-break
+  // prompt, the final choice, or a re-extension) starts from a clean slate.
+  const stopped = { ...snapshot, remainingSeconds: 0, phaseStartedAt: null, isRunning: false, isExtension: false };
 
   if (snapshot.phase === "focus") {
     const completed = countFocusCycle ? snapshot.completedFocusCycles + 1 : snapshot.completedFocusCycles;
@@ -222,7 +228,38 @@ export function completeSessionSnapshot(snapshot: SessionTimerSnapshot, now = Da
   // Bank whatever focus time the in-progress phase has accrued before tearing the
   // timer down, so ending mid-focus (from any window/button) still records it.
   const focusSecondsBanked = snapshot.focusSecondsBanked + liveFocusElapsed(snapshot, now);
-  return { ...snapshot, focusSecondsBanked, phase: "completed", isRunning: false, remainingSeconds: 0, phaseStartedAt: null, awaitingFinalChoice: false, awaitingNextPhase: null };
+  return { ...snapshot, focusSecondsBanked, phase: "completed", isRunning: false, remainingSeconds: 0, phaseStartedAt: null, awaitingFinalChoice: false, awaitingNextPhase: null, isExtension: false };
+}
+
+/**
+ * Add "+minutes" of focus from a focus-end prompt to keep going in flow. Only valid
+ * once a focus phase has just ended (the break / long-break / wrap-up prompt, or the
+ * final-cycle choice) — never mid-phase. The extension runs as a normal focus phase
+ * flagged isExtension, so its time banks like any focus block, but it does not count
+ * as a new pomodoro and, on completion, returns to the same prompt (currentCycle and
+ * plannedCycles are untouched, so completeCurrentPhase re-derives the identical state).
+ */
+export function extendFocus(snapshot: SessionTimerSnapshot, minutes: number, now = Date.now()): SessionTimerSnapshot {
+  const atFocusEnd =
+    snapshot.awaitingFinalChoice ||
+    snapshot.awaitingNextPhase === "break" ||
+    snapshot.awaitingNextPhase === "long_break" ||
+    snapshot.awaitingNextPhase === "completed";
+  if (!snapshot.activeSessionId || !atFocusEnd) return snapshot;
+  const seconds = clamp(Math.round(minutes), 1, 120) * 60;
+  return {
+    ...snapshot,
+    phase: "focus",
+    previousPhase: null,
+    remainingSeconds: seconds,
+    totalPhaseSeconds: seconds,
+    isRunning: true,
+    phaseStartedAt: now,
+    pausedAt: null,
+    awaitingFinalChoice: false,
+    awaitingNextPhase: null,
+    isExtension: true
+  };
 }
 
 export function snapshotFocusSeconds(snapshot: SessionTimerSnapshot) {

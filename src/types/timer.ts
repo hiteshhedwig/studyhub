@@ -30,6 +30,11 @@ export type SessionTimerSnapshot = {
   // top of this — see totalFocusSeconds — so ending mid-pomodoro still credits the
   // time actually studied, regardless of which button ends the session.
   focusSecondsBanked: number;
+  // True while the current focus phase is a "+N min" extension started from a
+  // focus-end prompt. Its time is banked like any focus phase, but it does NOT
+  // count as a new completed pomodoro (the cycle was already credited), and when
+  // it ends it returns to the same prompt so you can extend again, break, or wrap up.
+  isExtension: boolean;
 };
 
 export type OverlayPreferences = {

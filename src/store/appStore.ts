@@ -25,6 +25,7 @@ import {
   exportDueTopicReviews,
   mergePracticeAttempts,
   startSession,
+  setTopicSpacedRepetition,
   toggleBookmark,
   updateCheatsheetTitle,
   updateNote,
@@ -79,6 +80,7 @@ type AppState = DashboardData & {
   importQuestionSetForTopic: typeof importQuestionSetForTopic;
   deleteSession: typeof deleteSession;
   deleteTopic: typeof deleteTopic;
+  setTopicSpacedRepetition: typeof setTopicSpacedRepetition;
   resetAll: () => Promise<void>;
 };
 
@@ -188,6 +190,7 @@ export const useAppStore = create<AppState>((set) => ({
   importQuestionSetForTopic: wrap(set, importQuestionSetForTopic),
   deleteSession: wrap(set, deleteSession),
   deleteTopic: wrap(set, deleteTopic),
+  setTopicSpacedRepetition: wrap(set, setTopicSpacedRepetition),
   resetAll: async () => {
     await resetDatabase();
     await refresh(set);

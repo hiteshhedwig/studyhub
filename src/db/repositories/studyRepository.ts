@@ -268,11 +268,45 @@ export async function endSession(input: {
       db.run("INSERT INTO ResourceLink VALUES (?, ?, ?, ?, ?, ?, ?)", [id(), session.topic_id, session.id, "ChatGPT conversation", input.chatgptLink, "chatgpt", now()]);
     }
     if (input.scheduleRevisions) {
+      // Re-studying a topic resets its spacing: clear any still-pending topic_review
+      // rows first so we don't stack a second ladder on top of the first (which
+      // surfaced as duplicate topic reviews for the same topic). Completed reviews
+      // are a different status, so the recall history is left untouched.
+      db.run("DELETE FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'pending'", [session.topic_id]);
       const dates = createTopicRevisionDates(new Date(endedAt));
       dates.forEach((dueAt) => {
         db.run("INSERT INTO RevisionSchedule VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [id(), session.topic_id, session.id, dueAt, null, "topic_review", "pending", null, now()]);
       });
       db.run("UPDATE Topic SET next_revision_at = ?, status = 'revising', updated_at = ? WHERE id = ?", [dates[0], now(), session.topic_id]);
+    }
+  }, true);
+}
+
+/**
+ * Turn the spaced-repetition topic-review ladder on or off for a topic, decoupled
+ * from finishing a focus session — so an old topic added through Materials can be
+ * pulled into (or out of) the review track from the Topics page.
+ *
+ * Enabling builds a fresh 1/3/7/14/30/60-day ladder from today; disabling clears the
+ * still-pending ladder and stops surfacing the topic in reviews. Only status='pending'
+ * topic_review rows are ever touched, so completed reviews (recall history) survive
+ * both directions. A mastered topic is never demoted back to 'learning'.
+ */
+export async function setTopicSpacedRepetition(topicId: string, enabled: boolean) {
+  return withDb((db) => {
+    const topic = one<Topic>(db, "SELECT * FROM Topic WHERE id = ?", [topicId]);
+    if (!topic) return;
+    // Always clear the pending ladder first so enabling can't duplicate it.
+    db.run("DELETE FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'pending'", [topicId]);
+    if (enabled) {
+      const dates = createTopicRevisionDates(new Date());
+      dates.forEach((dueAt) => {
+        db.run("INSERT INTO RevisionSchedule VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [id(), topicId, null, dueAt, null, "topic_review", "pending", null, now()]);
+      });
+      db.run("UPDATE Topic SET next_revision_at = ?, status = 'revising', updated_at = ? WHERE id = ?", [dates[0], now(), topicId]);
+    } else {
+      const nextStatus = topic.status === "revising" ? "learning" : topic.status;
+      db.run("UPDATE Topic SET next_revision_at = NULL, status = ?, updated_at = ? WHERE id = ?", [nextStatus, now(), topicId]);
     }
   }, true);
 }

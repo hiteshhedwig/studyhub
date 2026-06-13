@@ -31,6 +31,9 @@ function nextActionLabel(next: string) {
   return "Finish";
 }
 
+// "Keep going" extension lengths offered when a focus cycle ends (mirrors Today).
+const EXTEND_OPTIONS = [5, 10, 15];
+
 const PAUSE_BREATHE_AFTER_MS = 10_000;
 
 export function MiniOverlay() {
@@ -202,16 +205,32 @@ export function MiniOverlay() {
             <span style={{ width: `${progress}%` }} />
           </div>
           {timer.awaitingFinalChoice ? (
-            <div className="overlay-final-actions">
-              <button type="button" onClick={timer.continueAnotherCycle}>Continue</button>
-              <button type="button" onClick={timer.takeLongBreak}>Long break</button>
-              <button type="button" onClick={timer.endTimer}>Wrap up</button>
-            </div>
+            <>
+              <div className="overlay-final-actions">
+                <button type="button" onClick={timer.continueAnotherCycle}>Continue</button>
+                <button type="button" onClick={timer.takeLongBreak}>Long break</button>
+                <button type="button" onClick={timer.endTimer}>Wrap up</button>
+              </div>
+              <div className="overlay-extend-row">
+                {EXTEND_OPTIONS.map((m) => (
+                  <button type="button" key={m} onClick={() => timer.extendFocus(m)}>+{m}m</button>
+                ))}
+              </div>
+            </>
           ) : timer.awaitingNextPhase ? (
-            <div className="overlay-final-actions">
-              <button type="button" onClick={timer.confirmNextPhase}>{nextActionLabel(timer.awaitingNextPhase)}</button>
-              <button type="button" onClick={timer.endTimer}>Wrap up</button>
-            </div>
+            <>
+              <div className="overlay-final-actions">
+                <button type="button" onClick={timer.confirmNextPhase}>{nextActionLabel(timer.awaitingNextPhase)}</button>
+                <button type="button" onClick={timer.endTimer}>Wrap up</button>
+              </div>
+              {timer.awaitingNextPhase !== "focus" ? (
+                <div className="overlay-extend-row">
+                  {EXTEND_OPTIONS.map((m) => (
+                    <button type="button" key={m} onClick={() => timer.extendFocus(m)}>+{m}m</button>
+                  ))}
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="overlay-actions">
               <button type="button" className="overlay-primary" onClick={timer.toggleRunning}>{timer.isRunning ? "Pause" : "Resume"}</button>

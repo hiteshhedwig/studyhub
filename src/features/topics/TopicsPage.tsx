@@ -62,6 +62,11 @@ export function TopicsPage() {
     toast.success("Topic deleted.");
   }
 
+  async function toggleSpacedRepetition(topic: Topic, enabled: boolean) {
+    await store.setTopicSpacedRepetition(topic.id, enabled);
+    toast.success(enabled ? `Spaced repetition on for "${topic.title}" — first review tomorrow.` : `Spaced repetition off for "${topic.title}".`);
+  }
+
   return (
     <>
       <PageHeader title="Topics" eyebrow="Knowledge homes for everything you are learning." />
@@ -71,6 +76,10 @@ export function TopicsPage() {
           const topicSessions = sessions.filter((session) => session.topic_id === topic.id);
           const topicQuestions = questions.filter((question) => question.topic_id === topic.id);
           const pending = revisions.filter((revision) => revision.topic_id === topic.id && revision.status === "pending").length;
+          // "Spaced repetition on" == the topic has a live topic-review ladder. Old
+          // topics added through Materials start with none, so the toggle is how you
+          // pull them into the review track without a focus session.
+          const srEnabled = revisions.some((revision) => revision.topic_id === topic.id && revision.type === "topic_review" && revision.status === "pending");
           const trend = topicTrend(topic.id, revisions);
           const isLate = topicHasLateRevision(topic.id, revisions);
           const edgeClass = isLate ? "edge-danger" : topic.status === "mastered" ? "edge-mastered" : "";
@@ -142,6 +151,19 @@ export function TopicsPage() {
                 <span>{topicQuestions.length} questions</span>
                 <span>{pending} due</span>
               </div>
+              <label
+                className="toggle"
+                style={{ fontSize: "var(--text-sm)", marginTop: 4 }}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={srEnabled}
+                  onChange={(event) => { event.stopPropagation(); void toggleSpacedRepetition(topic, event.target.checked); }}
+                />
+                <span>Spaced repetition</span>
+              </label>
             </article>
           );
         })}

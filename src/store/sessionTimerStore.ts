@@ -5,6 +5,7 @@ import {
   confirmNextPhase,
   continueAnotherCycle,
   createSessionTimer,
+  extendFocus,
   initialTimerSnapshot,
   pauseSnapshot,
   remainingFromTimestamp,
@@ -46,6 +47,7 @@ type TimerState = SessionTimerSnapshot &
     confirmNextPhase: () => void;
     continueAnotherCycle: () => void;
     takeLongBreak: () => void;
+    extendFocus: (minutes: number) => void;
     setOverlayOpen: (isOpen: boolean) => void;
     setOverlayCollapsed: (isCollapsed: boolean) => void;
     setOverlayPreference: <K extends keyof OverlayPreferences>(key: K, value: OverlayPreferences[K]) => void;
@@ -103,7 +105,8 @@ function snapshotFromState(state: TimerState): SessionTimerSnapshot {
     awaitingFinalChoice,
     awaitingNextPhase,
     completedFocusCycles,
-    focusSecondsBanked
+    focusSecondsBanked,
+    isExtension
   } = state;
   return {
     activeSessionId,
@@ -128,7 +131,8 @@ function snapshotFromState(state: TimerState): SessionTimerSnapshot {
     awaitingFinalChoice,
     awaitingNextPhase,
     completedFocusCycles,
-    focusSecondsBanked
+    focusSecondsBanked,
+    isExtension
   };
 }
 
@@ -194,6 +198,7 @@ export const useSessionTimerStore = create<TimerState>((set, get) => ({
   confirmNextPhase: () => setAndPersist(set, get, confirmNextPhase(snapshotFromState(get()))),
   continueAnotherCycle: () => setAndPersist(set, get, continueAnotherCycle(snapshotFromState(get()))),
   takeLongBreak: () => setAndPersist(set, get, takeLongBreak(snapshotFromState(get()))),
+  extendFocus: (minutes) => setAndPersist(set, get, extendFocus(snapshotFromState(get()), minutes)),
   setOverlayOpen: (isOpen) => {
     set({ isOverlayOpen: isOpen });
     writePreferences(preferencesFromState(get()));
