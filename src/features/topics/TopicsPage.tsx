@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronLeft, ExternalLink, FileText, Minus, MessageSquare, Pencil, Trash2, Video } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BookOpen, Check, ChevronLeft, ExternalLink, Feather, FileText, Minus, MessageSquare, Pencil, Quote, Trash2, Video } from "lucide-react";
 import { sessionFocusMinutes, topicHasLateRevision, topicPracticeStats, topicTrend, type Trend } from "../../services/statsService";
-import { formatDistanceToNow, parseISO } from "date-fns";
+import { format as formatDate, formatDistanceToNow, isThisWeek, isToday, isYesterday, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { QuestionScoreHeatmap } from "../../components/charts/QuestionScoreHeatmap";
 import { useAppStore } from "../../store/appStore";
 import { confirmDialog, toast } from "../../store/uiStore";
 import { openLocalPath } from "../../services/fileStorage";
+import { addTopicJournalEntry, deleteTopicJournalEntry, getTopicJournal, updateTopicJournalEntry } from "../../db/repositories/studyRepository";
 import { RevisionHistoryTimeline, summarizeRevisions } from "../../components/ui/RevisionHistoryTimeline";
-import type { ReviewAttempt, Topic } from "../../db/repositories/types";
+import type { ReviewAttempt, Topic, TopicJournalEntry } from "../../db/repositories/types";
 import { formatMinutes } from "../../utils/formatTime";
 
 function TrendArrow({ trend }: { trend: Trend }) {
@@ -20,6 +21,151 @@ function TrendArrow({ trend }: { trend: Trend }) {
     <span className={`trend trend-${trend}`} title={label} aria-label={label}>
       <Icon size={14} />
     </span>
+  );
+}
+
+function TopicJournalSection({ topicId }: { topicId: string }) {
+  const [entries, setEntries] = useState<TopicJournalEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    void getTopicJournal(topicId).then((rows) => {
+      if (alive) { setEntries(rows); setLoaded(true); }
+    });
+    return () => { alive = false; };
+  }, [topicId]);
+
+  // Group entries by calendar date (newest date first, entries within a day newest first)
+  const grouped = useMemo(() => {
+    const map = new Map<string, TopicJournalEntry[]>();
+    for (const entry of entries) {
+      const key = formatDate(parseISO(entry.created_at), "yyyy-MM-dd");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(entry);
+    }
+    return [...map.entries()].map(([dateKey, dayEntries]) => ({ dateKey, dayEntries }));
+  }, [entries]);
+
+  function dateLabel(dateKey: string) {
+    const d = parseISO(dateKey);
+    if (isToday(d)) return "Today";
+    if (isYesterday(d)) return "Yesterday";
+    if (isThisWeek(d, { weekStartsOn: 1 })) return formatDate(d, "EEEE");
+    return formatDate(d, "MMMM d, yyyy");
+  }
+
+  async function addEntry() {
+    const entry = await addTopicJournalEntry({ topicId, body: draft });
+    if (entry) { setEntries((prev) => [entry, ...prev]); setDraft(""); }
+  }
+
+  async function saveEdit(entryId: string) {
+    const trimmed = editingText.trim();
+    if (!trimmed) return;
+    await updateTopicJournalEntry(entryId, trimmed);
+    setEntries((prev) => prev.map((e) => e.id === entryId ? { ...e, body: trimmed, updated_at: new Date().toISOString() } : e));
+    setEditingId(null);
+  }
+
+  async function removeEntry(entryId: string) {
+    await deleteTopicJournalEntry(entryId);
+    setEntries((prev) => prev.filter((e) => e.id !== entryId));
+  }
+
+  return (
+    <div className="card">
+      <div className="tj-section-head">
+        <Feather size={17} />
+        <h2>Journal</h2>
+        {entries.length > 0 ? <span className="tj-badge">{entries.length}</span> : null}
+      </div>
+
+      {/* New-entry zone — feels like opening a blank page */}
+      <div className="tj-new-entry">
+        <div className="tj-new-entry-header">
+          <span className="tj-new-entry-label">New entry</span>
+          <span className="tj-new-entry-date-label">{formatDate(new Date(), "MMMM d, yyyy")}</span>
+        </div>
+        <textarea
+          className="tj-naked-area"
+          placeholder="Capture a reflection, insight, or note about this topic…"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void addEntry(); }
+          }}
+        />
+        {draft.trim() ? (
+          <div className="tj-new-entry-footer">
+            <button className="btn primary small" type="button" onClick={() => void addEntry()}>Save entry</button>
+            <button className="btn small ghost" type="button" onClick={() => setDraft("")}>Clear</button>
+            <span className="muted" style={{ fontSize: "var(--text-xs)", marginLeft: "auto" }}>Cmd+Enter</span>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Past entries grouped by date */}
+      {loaded && entries.length === 0 ? (
+        <p className="tj-empty">Your journal is empty — write your first entry above.</p>
+      ) : (
+        <div className="tj-journal-feed">
+          {grouped.map(({ dateKey, dayEntries }) => (
+            <div key={dateKey} className="tj-day-group">
+              <div className="tj-day-divider"><span>{dateLabel(dateKey)}</span></div>
+              {dayEntries.map((entry) => (
+                <div key={entry.id} className="tj-journal-entry">
+                  {editingId === entry.id ? (
+                    <div className="tj-edit-form">
+                      <textarea
+                        className="textarea"
+                        value={editingText}
+                        autoFocus
+                        onChange={(e) => setEditingText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void saveEdit(entry.id); }
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                      />
+                      <div className="button-row">
+                        <button className="btn small" type="button" onClick={() => void saveEdit(entry.id)}><Check size={14} /> Save</button>
+                        <button className="btn small ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="tj-journal-body">{entry.body}</p>
+                      <div className="tj-journal-meta">
+                        <span className="tj-journal-time" title={formatDate(parseISO(entry.created_at), "MMM d, yyyy 'at' h:mm a")}>
+                          {formatDate(parseISO(entry.created_at), "h:mm a")}
+                          {entry.updated_at !== entry.created_at ? " · edited" : ""}
+                        </span>
+                        {entry.question_preview ? (
+                          <span className="tj-q-chip" title={entry.question_preview}>
+                            <Quote size={10} aria-hidden="true" /> {entry.question_preview}
+                          </span>
+                        ) : null}
+                        <span className="tj-entry-actions">
+                          <button className="tj-icon-btn" type="button" aria-label="Edit entry" onClick={() => { setEditingId(entry.id); setEditingText(entry.body); }}>
+                            <Pencil size={13} />
+                          </button>
+                          <button className="tj-icon-btn danger" type="button" aria-label="Delete entry" onClick={() => void removeEntry(entry.id)}>
+                            <Trash2 size={13} />
+                          </button>
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -364,6 +510,9 @@ export function TopicDetailPage() {
           <p className="muted" style={{ margin: 0 }}>Each cell is one practice attempt, oldest → newest, colored by how you rated recall. Click a cell to see that attempt.</p>
           <QuestionScoreHeatmap key={topic.id} questions={topicQuestions} attempts={attempts} />
         </div>
+      </section>
+      <section style={{ marginTop: 20 }}>
+        <TopicJournalSection topicId={topic.id} />
       </section>
     </>
   );

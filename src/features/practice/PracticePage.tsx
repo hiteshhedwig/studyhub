@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Bookmark, BookmarkCheck, Check, CheckCircle2, Lock, NotebookPen, Pencil, Sparkles, Timer, Trash2, X } from "lucide-react";
+import { Bookmark, BookmarkCheck, Check, CheckCircle2, ChevronDown, Feather, Lock, NotebookPen, Pencil, Quote, Sparkles, Timer, Trash2, X } from "lucide-react";
 import { format as formatDate, formatDistanceToNow, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { RatingButtons } from "../../components/ui/RatingButtons";
 import { RichText } from "../../components/ui/RichText";
 import { AiEvalCard } from "../../components/ui/AiEvalCard";
+import { CodeEditor } from "../../components/ui/CodeEditor";
 import { getPracticeShortcutsEnabled, getAiEvalConfig, getActiveExamDate } from "../../services/preferencesService";
+import { getAutocompleteEnabled, setAutocompleteEnabled, getTorchApiSpec } from "../../services/codeInterpreterPrefs";
+import { getTorchMockPython } from "../../services/torchMock";
+import { runCode as runPyCode, type RunResult } from "../../services/codeRunner";
+import type { CodeMeta } from "../../db/repositories/types";
 import { aggregateReviewRating, buildTopicReviewSet, isQuestionDue } from "../../services/spacedRepetition";
 import { evaluateAnswer, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
 import { useAppStore } from "../../store/appStore";
-import { addQuestionNote, deleteQuestionNote, getQuestionNotes, updateQuestionNote } from "../../db/repositories/studyRepository";
-import type { Question, QuestionNoteWithLock, ReviewRating } from "../../db/repositories/types";
+import { addQuestionNote, addTopicJournalEntry, deleteQuestionNote, getQuestionNotes, getTopicJournal, updateQuestionNote } from "../../db/repositories/studyRepository";
+import type { Question, QuestionNoteWithLock, ReviewRating, TopicJournalEntry } from "../../db/repositories/types";
 import { toast } from "../../store/uiStore";
 
 // Compact clock for the live practice pill: "3:45", or "1h 05m" past an hour.
@@ -23,7 +28,7 @@ function formatClock(totalSeconds: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-type Mode = "due" | "topic" | "weak" | "random" | "bookmarked";
+type Mode = "due" | "topic" | "weak" | "random" | "bookmarked" | "code";
 type TopicOrder = "original" | "shuffled";
 
 const MODE_LABELS: Record<Mode, string> = {
@@ -31,7 +36,8 @@ const MODE_LABELS: Record<Mode, string> = {
   topic: "Topic",
   weak: "Weak",
   random: "Random",
-  bookmarked: "Bookmarked"
+  bookmarked: "Bookmarked",
+  code: "Coding"
 };
 
 function shuffleWithSeed<T>(items: T[], seed: number): T[] {
@@ -50,6 +56,106 @@ function shuffleWithSeed<T>(items: T[], seed: number): T[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+function TopicJournalPanel({ topicId, topicTitle, question }: { topicId: string; topicTitle: string; question: Question }) {
+  const [open, setOpen] = useState(false);
+  const [entries, setEntries] = useState<TopicJournalEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    let alive = true;
+    void getTopicJournal(topicId).then((rows) => {
+      if (alive) { setEntries(rows); setLoaded(true); }
+    });
+    return () => { alive = false; };
+  }, [open, loaded, topicId]);
+
+  function insertQA() {
+    const block = `Q: ${question.question}\n\nA: ${question.answer}\n\n`;
+    setDraft((prev) => prev ? block + prev : block);
+  }
+
+  async function saveEntry() {
+    const entry = await addTopicJournalEntry({ topicId, body: draft, questionId: question.id });
+    if (entry) {
+      setEntries((prev) => [entry, ...prev]);
+      setDraft("");
+      setAdding(false);
+      toast.success("Journal entry saved.");
+    }
+  }
+
+  const recent = entries.slice(0, 3);
+
+  return (
+    <div className="tj">
+      <button className="tj-header" type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <Feather size={15} aria-hidden="true" />
+        <span>Topic journal · {topicTitle}</span>
+        {loaded && entries.length > 0 ? <span className="tj-badge">{entries.length}</span> : null}
+        <ChevronDown size={15} className={`tj-chevron${open ? " open" : ""}`} aria-hidden="true" style={{ marginLeft: "auto" }} />
+      </button>
+      {open && (
+        <div className="tj-body-reveal">
+          {loaded && recent.length > 0 && (
+            <div className="tj-feed">
+              {recent.map((entry) => (
+                <div key={entry.id} className="tj-entry">
+                  <RichText className="tj-entry-body">{entry.body}</RichText>
+                  <div className="tj-entry-meta">
+                    <span className="tj-entry-time" title={formatDate(parseISO(entry.created_at), "MMM d, yyyy 'at' HH:mm")}>
+                      {formatDistanceToNow(parseISO(entry.created_at), { addSuffix: true })}
+                    </span>
+                    {entry.question_preview ? (
+                      <span className="tj-q-chip" title={entry.question_preview}>
+                        <Quote size={10} aria-hidden="true" /> {entry.question_preview}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+              {entries.length > 3 ? (
+                <p className="tj-more">+{entries.length - 3} more — view all in the topic's Journal section</p>
+              ) : null}
+            </div>
+          )}
+          {adding ? (
+            <div className="tj-add-form">
+              <div className="tj-add-toolbar">
+                <button className="btn small" type="button" onClick={insertQA}>
+                  <Quote size={14} aria-hidden="true" /> Insert Q&amp;A
+                </button>
+                <span className="muted" style={{ fontSize: "var(--text-xs)" }}>Cmd+Enter to save · Esc to cancel</span>
+              </div>
+              <textarea
+                className="textarea"
+                placeholder="What clicked? What do you want to explore further?"
+                value={draft}
+                autoFocus
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void saveEntry(); }
+                  if (e.key === "Escape") { e.preventDefault(); setAdding(false); setDraft(""); }
+                }}
+              />
+              <div className="tj-add-form-actions">
+                <button className="btn small primary" type="button" disabled={!draft.trim()} onClick={() => void saveEntry()}>Save entry</button>
+                <button className="btn small ghost" type="button" onClick={() => { setAdding(false); setDraft(""); }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn small" type="button" onClick={() => setAdding(true)} style={{ justifySelf: "start" }}>
+              <Pencil size={14} aria-hidden="true" /> Add journal entry
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function PracticePage() {
@@ -82,6 +188,12 @@ export function PracticePage() {
   const [activeSeconds, setActiveSeconds] = useState(0);
   const [cardsThisRun, setCardsThisRun] = useState(0);
   const [topicCount, setTopicCount] = useState(0);
+
+  // Code interpreter state
+  const [userCode, setUserCode] = useState("");
+  const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [running, setRunning] = useState(false);
+  const [autocomplete, setAutocomplete] = useState(() => getAutocompleteEnabled());
   const topicsRef = useRef<Set<string>>(new Set());
   // Mirror `revealed` into a ref so the 1s timer tick reads it without re-subscribing.
   const revealedRef = useRef(false);
@@ -133,6 +245,10 @@ export function PracticePage() {
     if (mode === "bookmarked") {
       return store.questions.filter((question) => question.bookmarked);
     }
+    if (mode === "code") {
+      const list = store.questions.filter((question) => question.code_meta_json !== null && (!topicId || question.topic_id === topicId));
+      return topicOrder === "shuffled" ? shuffleWithSeed(list, shuffleSeed) : list;
+    }
     return shuffleWithSeed(store.questions, shuffleSeed);
   }, [store.questions, mode, topicId, topicOrder, shuffleSeed]);
 
@@ -144,6 +260,13 @@ export function PracticePage() {
   // topic switch, pool changes). Without this, the stale "revealed" / answer
   // text would persist into the next question.
   const currentId = current?.id;
+
+  const codeMeta = useMemo<CodeMeta | null>(() => {
+    if (!current?.code_meta_json) return null;
+    try { return JSON.parse(current.code_meta_json) as CodeMeta; } catch { return null; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, current?.code_meta_json]);
+
   useEffect(() => {
     setRevealed(false);
     setAnswer("");
@@ -153,7 +276,14 @@ export function PracticePage() {
     setNotes([]);
     setDraft("");
     setEditingId(null);
+    setRunResult(null);
+    setRunning(false);
   }, [currentId]);
+
+  // Reset code editor to starter code whenever the question changes
+  useEffect(() => {
+    setUserCode(codeMeta?.starter_code ?? "");
+  }, [codeMeta]);
 
   // Stamp the recall→reveal moment once, the first time this card is revealed.
   useEffect(() => {
@@ -179,6 +309,28 @@ export function PracticePage() {
     setEvalState({ status: "loading" });
     const result = await evaluateAnswer({ question: current.question, canonical: current.answer, userAnswer: answer });
     setEvalState(result.ok ? { status: "done", result: result.data } : { status: "error", error: result.error });
+  }
+
+  async function handleCodeRun() {
+    if (!current || !codeMeta) return;
+    setRunning(true);
+    try {
+      const spec = getTorchApiSpec();
+      const torchMockCode = spec ? getTorchMockPython(spec) : "";
+      const result = await runPyCode({ code: userCode, testCases: codeMeta.test_cases, torchMockCode });
+      setRunResult(result);
+    } catch (e: unknown) {
+      setRunResult({ stdout: "", stderr: "", error: e instanceof Error ? e.message : String(e), testResults: [] });
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function toggleAutocomplete() {
+    setAutocomplete((prev) => {
+      setAutocompleteEnabled(!prev);
+      return !prev;
+    });
   }
 
   async function toggleBookmark() {
@@ -269,6 +421,7 @@ export function PracticePage() {
       if (event.key === " " && (!inField || event.shiftKey)) {
         event.preventDefault();
         if (!current) return;
+        if (codeMeta) { skipForward(); return; }
         if (!revealed) setRevealed(true);
         else skipForward();
         return;
@@ -342,10 +495,10 @@ export function PracticePage() {
             {MODE_LABELS[item]}
           </button>
         ))}
-        {mode === "topic" ? (
+        {(mode === "topic" || mode === "code") ? (
           <>
             <select className="select" style={{ maxWidth: 260 }} value={topicId} onChange={(event) => { setTopicId(event.target.value); setIndex(0); setShuffleSeed(Date.now()); }}>
-              <option value="">All topics</option>
+              <option value="">{mode === "code" ? "All coding topics" : "All topics"}</option>
               {store.topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}
             </select>
             <div className="button-row" role="radiogroup" aria-label="Question order">
@@ -380,119 +533,256 @@ export function PracticePage() {
       )}
       <section className="card raised" style={{ marginTop: 20 }}>
         {current ? (
-          <div className="grid">
-            <div className="split">
-              <span className="pill">{current.topic_title} · {current.difficulty}</span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                <button
-                  type="button"
-                  className={`btn small ${current.bookmarked ? "primary" : ""}`}
-                  onClick={() => void toggleBookmark()}
-                  aria-pressed={Boolean(current.bookmarked)}
-                  title={current.bookmarked ? "Remove bookmark" : "Bookmark this question"}
-                >
-                  {current.bookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
-                  {current.bookmarked ? "Bookmarked" : "Bookmark"}
-                </button>
-                <span className="muted">{reviewActive ? index + 1 : (index % pool.length) + 1} / {reviewActive ? reviewPool.length : pool.length}</span>
-              </span>
-            </div>
-            <RichText className="prompt">{current.question}</RichText>
-            <label className="field">
-              <span>Your answer</span>
-              <textarea ref={answerRef} className="textarea" value={answer} onChange={(event) => setAnswer(event.target.value)} />
-            </label>
-            {!revealed ? (
-              <div className="button-row">
-                <button className="btn primary" type="button" onClick={() => setRevealed(true)}>Reveal answer</button>
-                {aiAvailable ? (
-                  <button className="btn" type="button" onClick={() => void runEvaluation()}><Sparkles size={16} />AI Evaluation</button>
-                ) : null}
-                <button className="btn" type="button" onClick={skipForward}>Skip</button>
+          codeMeta ? (
+            /* ---- Code question branch ---- */
+            <div className="grid">
+              <div className="split">
+                <span className="pill">{current.topic_title} · {current.difficulty} · python</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                  <button
+                    type="button"
+                    className={`btn small ${current.bookmarked ? "primary" : ""}`}
+                    onClick={() => void toggleBookmark()}
+                    aria-pressed={Boolean(current.bookmarked)}
+                    title={current.bookmarked ? "Remove bookmark" : "Bookmark this question"}
+                  >
+                    {current.bookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                    {current.bookmarked ? "Bookmarked" : "Bookmark"}
+                  </button>
+                  <span className="muted">{reviewActive ? index + 1 : (index % pool.length) + 1} / {reviewActive ? reviewPool.length : pool.length}</span>
+                </span>
               </div>
-            ) : (
-              <>
-                <div className="card"><h3>Answer</h3><RichText>{current.answer}</RichText></div>
-                <div className="qnote">
-                  <div className="qnote-head">
-                    <NotebookPen size={15} aria-hidden="true" />
-                    <span>Notes to self</span>
-                    {notes.length ? <span className="qnote-count">{notes.length}</span> : null}
+              <RichText className="prompt">{current.question}</RichText>
+              {(userCode.includes("import torch") || userCode.includes("from torch")) ? (
+                <div className="torch-warning">⚠ torch is mocked — basic ops only; use numpy for numerical accuracy</div>
+              ) : null}
+              {!revealed ? (
+                <>
+                  <CodeEditor value={userCode} onChange={setUserCode} autoComplete={autocomplete} minHeight={300} />
+                  <div className="code-toolbar">
+                    <button className="btn primary" type="button" onClick={() => void handleCodeRun()} disabled={running}>
+                      {running ? "Running…" : "▶ Run code"}
+                    </button>
+                    <button className="btn small" type="button" onClick={toggleAutocomplete} title="Toggle editor autocomplete">
+                      Autocomplete {autocomplete ? "on" : "off"}
+                    </button>
+                    {runResult ? (
+                      <button className="btn" type="button" onClick={() => setRevealed(true)}>Reveal solution</button>
+                    ) : null}
+                    <button className="btn" type="button" onClick={skipForward} style={{ marginLeft: "auto" }}>Skip</button>
                   </div>
-                  {notes.length ? (
-                    <ul className="qnote-list">
-                      {notes.map((note) => (
-                        <li key={note.id} className={`qnote-item${note.editable ? " editable" : ""}`}>
-                          {editingId === note.id ? (
-                            <div className="qnote-edit">
-                              <textarea
-                                className="textarea"
-                                value={editingText}
-                                autoFocus
-                                onChange={(event) => setEditingText(event.target.value)}
-                                onKeyDown={(event) => {
-                                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveEdit(note.id); }
-                                  if (event.key === "Escape") { event.preventDefault(); setEditingId(null); }
-                                }}
-                              />
-                              <div className="qnote-actions">
-                                <button className="btn small" type="button" onClick={() => void saveEdit(note.id)}><Check size={14} /> Save</button>
-                                <button className="btn small ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
-                              </div>
+                  {runResult ? (
+                    <div className="code-output-wrap">
+                      {runResult.error ? (
+                        <pre className="code-output error">{runResult.error}</pre>
+                      ) : runResult.stdout ? (
+                        <pre className="code-output">{runResult.stdout}</pre>
+                      ) : (
+                        <pre className="code-output muted">No output</pre>
+                      )}
+                      {runResult.testResults.length > 0 ? (
+                        <div className="test-results">
+                          {runResult.testResults.map((tr, i) => (
+                            <div key={i} className={`test-row ${tr.passed ? "pass" : "fail"}`}>
+                              <span className="test-badge">{tr.passed ? "✓" : "✗"}</span>
+                              <span className="test-desc">{tr.description}</span>
+                              {!tr.passed && (tr.actual ?? tr.error) ? (
+                                <span className="test-actual">{tr.error ?? `got: ${tr.actual ?? ""}`}</span>
+                              ) : null}
                             </div>
-                          ) : (
-                            <>
-                              <RichText className="qnote-body">{note.body}</RichText>
-                              <div className="qnote-meta">
-                                {note.rating ? <span className={`qnote-chip ${note.rating}`}>{note.rating}</span> : null}
-                                <span className="muted" title={formatDate(parseISO(note.created_at), "MMM d, yyyy · HH:mm")}>
-                                  {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true })}
-                                </span>
-                                {note.editable ? (
-                                  <span className="qnote-actions">
-                                    <button className="qnote-icon" type="button" aria-label="Edit note" onClick={() => { setEditingId(note.id); setEditingText(note.body); }}><Pencil size={13} /></button>
-                                    <button className="qnote-icon" type="button" aria-label="Delete note" onClick={() => void removeNote(note.id)}><Trash2 size={13} /></button>
-                                  </span>
-                                ) : (
-                                  <span className="qnote-lock" title="Sealed — written in an earlier review"><Lock size={12} aria-hidden="true" /></span>
-                                )}
-                              </div>
-                            </>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
-                  <div className="qnote-add">
-                    <textarea
-                      className="textarea"
-                      placeholder={notes.length ? "Add today's note — what tripped you up vs. last time?" : "What tripped you up? (seals when you rate)"}
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveDraft(); }
-                      }}
-                    />
-                    <button className="btn small" type="button" disabled={!draft.trim()} onClick={() => void saveDraft()}>Save note</button>
+                </>
+              ) : (
+                <>
+                  <div className="code-compare">
+                    <div className="code-compare-pane">
+                      <h3 className="code-compare-label">Your attempt</h3>
+                      <CodeEditor value={userCode} readOnly minHeight={220} />
+                    </div>
+                    <div className="code-compare-pane">
+                      <h3 className="code-compare-label">Solution</h3>
+                      <CodeEditor value={current.answer} readOnly minHeight={220} />
+                    </div>
                   </div>
+                  <div className="qnote">
+                    <div className="qnote-head">
+                      <NotebookPen size={15} aria-hidden="true" />
+                      <span>Notes to self</span>
+                      {notes.length ? <span className="qnote-count">{notes.length}</span> : null}
+                    </div>
+                    {notes.length ? (
+                      <ul className="qnote-list">
+                        {notes.map((note) => (
+                          <li key={note.id} className={`qnote-item${note.editable ? " editable" : ""}`}>
+                            {editingId === note.id ? (
+                              <div className="qnote-edit">
+                                <textarea className="textarea" value={editingText} autoFocus onChange={(event) => setEditingText(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveEdit(note.id); }
+                                    if (event.key === "Escape") { event.preventDefault(); setEditingId(null); }
+                                  }}
+                                />
+                                <div className="qnote-actions">
+                                  <button className="btn small" type="button" onClick={() => void saveEdit(note.id)}><Check size={14} /> Save</button>
+                                  <button className="btn small ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <RichText className="qnote-body">{note.body}</RichText>
+                                <div className="qnote-meta">
+                                  {note.rating ? <span className={`qnote-chip ${note.rating}`}>{note.rating}</span> : null}
+                                  <span className="muted" title={formatDate(parseISO(note.created_at), "MMM d, yyyy · HH:mm")}>{formatDistanceToNow(parseISO(note.created_at), { addSuffix: true })}</span>
+                                  {note.editable ? (
+                                    <span className="qnote-actions">
+                                      <button className="qnote-icon" type="button" aria-label="Edit note" onClick={() => { setEditingId(note.id); setEditingText(note.body); }}><Pencil size={13} /></button>
+                                      <button className="qnote-icon" type="button" aria-label="Delete note" onClick={() => void removeNote(note.id)}><Trash2 size={13} /></button>
+                                    </span>
+                                  ) : (
+                                    <span className="qnote-lock" title="Sealed — written in an earlier review"><Lock size={12} aria-hidden="true" /></span>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="qnote-add">
+                      <textarea className="textarea"
+                        placeholder={notes.length ? "Add today's note — what did you get wrong vs. last time?" : "What tripped you up? (seals when you rate)"}
+                        value={draft} onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveDraft(); } }}
+                      />
+                      <button className="btn small" type="button" disabled={!draft.trim()} onClick={() => void saveDraft()}>Save note</button>
+                    </div>
+                  </div>
+                  <TopicJournalPanel key={currentId} topicId={current.topic_id} topicTitle={current.topic_title ?? ""} question={current} />
+                  <RatingButtons onRate={rate} />
+                </>
+              )}
+            </div>
+          ) : (
+            /* ---- Recall question branch (unchanged) ---- */
+            <div className="grid">
+              <div className="split">
+                <span className="pill">{current.topic_title} · {current.difficulty}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                  <button
+                    type="button"
+                    className={`btn small ${current.bookmarked ? "primary" : ""}`}
+                    onClick={() => void toggleBookmark()}
+                    aria-pressed={Boolean(current.bookmarked)}
+                    title={current.bookmarked ? "Remove bookmark" : "Bookmark this question"}
+                  >
+                    {current.bookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                    {current.bookmarked ? "Bookmarked" : "Bookmark"}
+                  </button>
+                  <span className="muted">{reviewActive ? index + 1 : (index % pool.length) + 1} / {reviewActive ? reviewPool.length : pool.length}</span>
+                </span>
+              </div>
+              <RichText className="prompt">{current.question}</RichText>
+              <label className="field">
+                <span>Your answer</span>
+                <textarea ref={answerRef} className="textarea" value={answer} onChange={(event) => setAnswer(event.target.value)} />
+              </label>
+              {!revealed ? (
+                <div className="button-row">
+                  <button className="btn primary" type="button" onClick={() => setRevealed(true)}>Reveal answer</button>
+                  {aiAvailable ? (
+                    <button className="btn" type="button" onClick={() => void runEvaluation()}><Sparkles size={16} />AI Evaluation</button>
+                  ) : null}
+                  <button className="btn" type="button" onClick={skipForward}>Skip</button>
                 </div>
-                {aiAvailable && evalState.status === "idle" ? (
-                  <button className="btn" type="button" onClick={() => void runEvaluation()} style={{ justifySelf: "start" }}><Sparkles size={16} />Evaluate with AI</button>
-                ) : null}
-                {evalState.status === "loading" ? (
-                  <div className="ai-eval-status"><span className="ai-spinner" aria-hidden="true" /> Evaluating your answer…</div>
-                ) : null}
-                {evalState.status === "error" ? (
-                  <div className="ai-eval-status error">
-                    <span>AI evaluation failed: {evalState.error}</span>
-                    <button className="btn small" type="button" onClick={() => void runEvaluation()}>Retry</button>
+              ) : (
+                <>
+                  <div className="card"><h3>Answer</h3><RichText>{current.answer}</RichText></div>
+                  <div className="qnote">
+                    <div className="qnote-head">
+                      <NotebookPen size={15} aria-hidden="true" />
+                      <span>Notes to self</span>
+                      {notes.length ? <span className="qnote-count">{notes.length}</span> : null}
+                    </div>
+                    {notes.length ? (
+                      <ul className="qnote-list">
+                        {notes.map((note) => (
+                          <li key={note.id} className={`qnote-item${note.editable ? " editable" : ""}`}>
+                            {editingId === note.id ? (
+                              <div className="qnote-edit">
+                                <textarea
+                                  className="textarea"
+                                  value={editingText}
+                                  autoFocus
+                                  onChange={(event) => setEditingText(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveEdit(note.id); }
+                                    if (event.key === "Escape") { event.preventDefault(); setEditingId(null); }
+                                  }}
+                                />
+                                <div className="qnote-actions">
+                                  <button className="btn small" type="button" onClick={() => void saveEdit(note.id)}><Check size={14} /> Save</button>
+                                  <button className="btn small ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <RichText className="qnote-body">{note.body}</RichText>
+                                <div className="qnote-meta">
+                                  {note.rating ? <span className={`qnote-chip ${note.rating}`}>{note.rating}</span> : null}
+                                  <span className="muted" title={formatDate(parseISO(note.created_at), "MMM d, yyyy · HH:mm")}>
+                                    {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true })}
+                                  </span>
+                                  {note.editable ? (
+                                    <span className="qnote-actions">
+                                      <button className="qnote-icon" type="button" aria-label="Edit note" onClick={() => { setEditingId(note.id); setEditingText(note.body); }}><Pencil size={13} /></button>
+                                      <button className="qnote-icon" type="button" aria-label="Delete note" onClick={() => void removeNote(note.id)}><Trash2 size={13} /></button>
+                                    </span>
+                                  ) : (
+                                    <span className="qnote-lock" title="Sealed — written in an earlier review"><Lock size={12} aria-hidden="true" /></span>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="qnote-add">
+                      <textarea
+                        className="textarea"
+                        placeholder={notes.length ? "Add today's note — what tripped you up vs. last time?" : "What tripped you up? (seals when you rate)"}
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveDraft(); }
+                        }}
+                      />
+                      <button className="btn small" type="button" disabled={!draft.trim()} onClick={() => void saveDraft()}>Save note</button>
+                    </div>
                   </div>
-                ) : null}
-                {evalState.status === "done" && evalState.result ? <AiEvalCard result={evalState.result} /> : null}
-                <RatingButtons onRate={rate} suggested={evalState.status === "done" && evalState.result ? recallGradeToRating(evalState.result.recall_grade) : undefined} />
-              </>
-            )}
-          </div>
+                  <TopicJournalPanel key={currentId} topicId={current.topic_id} topicTitle={current.topic_title ?? ""} question={current} />
+                  {aiAvailable && evalState.status === "idle" ? (
+                    <button className="btn" type="button" onClick={() => void runEvaluation()} style={{ justifySelf: "start" }}><Sparkles size={16} />Evaluate with AI</button>
+                  ) : null}
+                  {evalState.status === "loading" ? (
+                    <div className="ai-eval-status"><span className="ai-spinner" aria-hidden="true" /> Evaluating your answer…</div>
+                  ) : null}
+                  {evalState.status === "error" ? (
+                    <div className="ai-eval-status error">
+                      <span>AI evaluation failed: {evalState.error}</span>
+                      <button className="btn small" type="button" onClick={() => void runEvaluation()}>Retry</button>
+                    </div>
+                  ) : null}
+                  {evalState.status === "done" && evalState.result ? <AiEvalCard result={evalState.result} /> : null}
+                  <RatingButtons onRate={rate} suggested={evalState.status === "done" && evalState.result ? recallGradeToRating(evalState.result.recall_grade) : undefined} />
+                </>
+              )}
+            </div>
+          )
         ) : reviewActive ? (
           <div className="grid" style={{ justifyItems: "center", textAlign: "center", gap: 14, padding: "12px 0" }}>
             <CheckCircle2 size={40} style={{ color: "var(--accent)" }} aria-hidden="true" />

@@ -11,6 +11,8 @@ import { differenceInCalendarDays } from "date-fns";
 import { buildQuestionsFile, parsePracticeFile, saveTextFile, openTextFile, practiceFileName } from "../../services/practiceSyncService";
 import { confirmDialog, toast } from "../../store/uiStore";
 import { ACCENT_PRESETS } from "../../services/accentPresets";
+import { getTorchApiSpec, setTorchApiSpec, clearTorchApiSpec, getAutocompleteEnabled, setAutocompleteEnabled } from "../../services/codeInterpreterPrefs";
+import { parseTorchSpec, getTorchSpecFunctionCount } from "../../services/torchMock";
 
 export function SettingsPage() {
   const { theme, setTheme, accent, setAccent, resetAll, exportPracticeQuestions, exportDueTopicReviews, mergePracticeAttempts } = useAppStore();
@@ -22,6 +24,8 @@ export function SettingsPage() {
   const [ai, setAi] = useState(() => getAiEvalConfig());
   const [exam, setExam] = useState(() => getExamConfig());
   const [syncBusy, setSyncBusy] = useState(false);
+  const [torchSpec, setTorchSpecState] = useState(() => getTorchApiSpec());
+  const [autocomplete, setAutocompleteState] = useState(() => getAutocompleteEnabled());
 
   function handleVolumeChange(next: number) {
     setVolumeState(next);
@@ -171,6 +175,30 @@ export function SettingsPage() {
     toast.info("The cat curled up offscreen.");
   }
 
+  async function handleTorchSpecUpload() {
+    const raw = await openTextFile();
+    if (!raw) return;
+    const spec = parseTorchSpec(raw);
+    if (!spec) {
+      toast.danger("Invalid spec file — must be JSON with a 'version' and 'modules' field.");
+      return;
+    }
+    setTorchApiSpec(raw);
+    setTorchSpecState(spec);
+    toast.success(`PyTorch API spec v${spec.version} loaded — ${getTorchSpecFunctionCount(spec)} functions registered.`);
+  }
+
+  function handleTorchSpecClear() {
+    clearTorchApiSpec();
+    setTorchSpecState(null);
+    toast.info("PyTorch spec cleared.");
+  }
+
+  function handleAutocompleteChange(enabled: boolean) {
+    setAutocompleteEnabled(enabled);
+    setAutocompleteState(enabled);
+  }
+
   return (
     <>
       <PageHeader title="Settings" eyebrow="Local preferences and database care." />
@@ -269,6 +297,40 @@ export function SettingsPage() {
             Good picks: <code>google/gemini-3.5-flash</code>, <code>openai/gpt-5.4-mini</code>. Create a key at openrouter.ai/keys;
             it's stored locally in plain text on this device.
           </p>
+        </div>
+
+        <div className="card grid">
+          <h2>Code interpreter</h2>
+          <p className="muted">
+            Runs Python questions in-browser via Pyodide (WebAssembly). No server needed — executes locally and offline after
+            the first load. Import code questions through Materials using the extended JSON schema (add{" "}
+            <code>type: "code"</code>, <code>starter_code</code>, <code>solution</code>, and <code>test_cases</code>).
+          </p>
+          <label className="toggle">
+            <input type="checkbox" checked={autocomplete} onChange={(e) => handleAutocompleteChange(e.target.checked)} />
+            <span>Autocomplete on by default</span>
+          </label>
+          <div className="field">
+            <span>PyTorch API spec</span>
+            {torchSpec ? (
+              <div className="ci-spec-loaded">
+                <span className="ci-spec-info">
+                  v{torchSpec.version} · {getTorchSpecFunctionCount(torchSpec)} functions
+                </span>
+                <div className="button-row">
+                  <button className="btn" type="button" onClick={() => void handleTorchSpecUpload()}>Replace</button>
+                  <button className="btn danger" type="button" onClick={handleTorchSpecClear}>Clear</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="muted" style={{ fontSize: "var(--text-xs)", marginBottom: "0.5rem" }}>
+                  No spec loaded — <code>import torch</code> will show a warning but still run (stub only).
+                </p>
+                <button className="btn primary" type="button" onClick={() => void handleTorchSpecUpload()}>Upload torch spec JSON</button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="card grid">

@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+const codeTestCaseSchema = z.object({
+  description: z.string(),
+  setup: z.string(),
+  call: z.string(),
+  expected_shape: z.array(z.number()).optional(),
+  expected_value: z.string().optional()
+});
+
 export const questionImportSchema = z.object({
   category: z.string().min(1, "Category is required"),
   topic: z.string().min(1, "Topic is required"),
@@ -9,7 +17,13 @@ export const questionImportSchema = z.object({
     .array(
       z.object({
         question: z.string().min(1, "Question text is required"),
-        answer: z.string().min(1, "Answer text is required"),
+        // Recall questions: provide answer. Code questions: provide solution instead.
+        answer: z.string().default(""),
+        type: z.enum(["recall", "code"]).default("recall"),
+        language: z.string().optional(),
+        starter_code: z.string().optional(),
+        solution: z.string().optional(),
+        test_cases: z.array(codeTestCaseSchema).optional(),
         difficulty: z.enum(["easy", "medium", "hard"]).default("medium"),
         tags: z.array(z.string()).default([])
       })

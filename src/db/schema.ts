@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS Question (
   review_count INTEGER NOT NULL DEFAULT 0,
   mastery_score INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
+  code_meta_json TEXT,
   FOREIGN KEY(question_set_id) REFERENCES QuestionSet(id),
   FOREIGN KEY(topic_id) REFERENCES Topic(id)
 );
@@ -158,6 +159,17 @@ CREATE TABLE IF NOT EXISTS ResourceLink (
 CREATE TABLE IF NOT EXISTS Settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS TopicJournal (
+  id TEXT PRIMARY KEY,
+  topic_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  question_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(topic_id) REFERENCES Topic(id),
+  FOREIGN KEY(question_id) REFERENCES Question(id)
 );
 `;
 

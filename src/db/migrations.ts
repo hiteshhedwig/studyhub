@@ -21,6 +21,7 @@ export function runMigrations(db: Database) {
   // Additive column migrations for databases created before the column existed —
   // CREATE TABLE IF NOT EXISTS leaves an already-existing table untouched.
   addColumnIfMissing(db, "StudySession", "extra_focus_seconds", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(db, "Question", "code_meta_json", "TEXT");
   backfillFocusSeconds(db);
   db.run(seedSql);
 }

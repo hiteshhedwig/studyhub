@@ -3,7 +3,7 @@ import { addDays, endOfDay, parseISO } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
 import { aggregateReviewRating, calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
 import { getActiveExamDate } from "../../services/preferencesService";
-import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionNote, QuestionNoteWithLock, QuestionSet, ResourceLink, ReviewActivityRow, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic } from "./types";
+import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionNote, QuestionNoteWithLock, QuestionSet, ResourceLink, ReviewActivityRow, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic, TopicJournalEntry } from "./types";
 import type { QuestionImport } from "../../services/importQuestions";
 
 const id = () => crypto.randomUUID();
@@ -356,12 +356,15 @@ export async function importQuestionSet(data: QuestionImport, sessionId?: string
     const setId = id();
     db.run("INSERT INTO QuestionSet VALUES (?, ?, ?, ?, ?, ?, ?)", [setId, topic.id, sessionId ?? null, data.title, data.source, now(), JSON.stringify(data)]);
     data.questions.forEach((question) => {
-      db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+      const isCode = question.type === "code";
+      const answer = isCode ? (question.solution ?? "") : question.answer;
+      const codeMeta = isCode ? JSON.stringify({ language: question.language ?? "python", starter_code: question.starter_code ?? "", test_cases: question.test_cases ?? [] }) : null;
+      db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         id(),
         setId,
         topic.id,
         question.question,
-        question.answer,
+        answer,
         question.difficulty as Difficulty,
         JSON.stringify(question.tags),
         // New questions are immediately due so they show up to practice right
@@ -370,7 +373,8 @@ export async function importQuestionSet(data: QuestionImport, sessionId?: string
         null,
         0,
         0,
-        now()
+        now(),
+        codeMeta
       ]);
     });
     return setId;
@@ -384,12 +388,15 @@ export async function importQuestionSetForTopic(data: QuestionImport, topicId: s
     const setId = id();
     db.run("INSERT INTO QuestionSet VALUES (?, ?, ?, ?, ?, ?, ?)", [setId, topicId, sessionId ?? null, data.title, data.source, now(), JSON.stringify(data)]);
     data.questions.forEach((question) => {
-      db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+      const isCode = question.type === "code";
+      const answer = isCode ? (question.solution ?? "") : question.answer;
+      const codeMeta = isCode ? JSON.stringify({ language: question.language ?? "python", starter_code: question.starter_code ?? "", test_cases: question.test_cases ?? [] }) : null;
+      db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         id(),
         setId,
         topicId,
         question.question,
-        question.answer,
+        answer,
         question.difficulty as Difficulty,
         JSON.stringify(question.tags),
         // New questions are immediately due so they show up to practice right
@@ -398,7 +405,8 @@ export async function importQuestionSetForTopic(data: QuestionImport, topicId: s
         null,
         0,
         0,
-        now()
+        now(),
+        codeMeta
       ]);
     });
     db.run("UPDATE Topic SET updated_at = ? WHERE id = ?", [now(), topicId]);
@@ -829,7 +837,7 @@ export async function addQuestion(setId: string, fields: QuestionFields): Promis
     const set = one<QuestionSet>(db, "SELECT * FROM QuestionSet WHERE id = ?", [setId]);
     if (!set) throw new Error("Choose a set for the question.");
     const questionId = id();
-    db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+    db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
       questionId,
       setId,
       set.topic_id,
@@ -841,7 +849,8 @@ export async function addQuestion(setId: string, fields: QuestionFields): Promis
       null,
       0,
       0,
-      now()
+      now(),
+      null
     ]);
     return questionId;
   }, true);
@@ -896,8 +905,46 @@ export async function deleteTopic(topicId: string) {
     db.run("DELETE FROM Cheatsheet WHERE topic_id = ?", [topicId]);
     db.run("DELETE FROM RevisionSchedule WHERE topic_id = ?", [topicId]);
     db.run("DELETE FROM ResourceLink WHERE topic_id = ?", [topicId]);
+    db.run("DELETE FROM TopicJournal WHERE topic_id = ?", [topicId]);
     db.run("DELETE FROM PomodoroBlock WHERE session_id IN (SELECT id FROM StudySession WHERE topic_id = ?)", [topicId]);
     db.run("DELETE FROM StudySession WHERE topic_id = ?", [topicId]);
     db.run("DELETE FROM Topic WHERE id = ?", [topicId]);
   }, true);
+}
+
+export async function getTopicJournal(topicId: string): Promise<TopicJournalEntry[]> {
+  return withDb((db) =>
+    toRows<TopicJournalEntry>(
+      db,
+      `SELECT tj.*, SUBSTR(q.question, 1, 120) AS question_preview
+       FROM TopicJournal tj
+       LEFT JOIN Question q ON q.id = tj.question_id
+       WHERE tj.topic_id = ?
+       ORDER BY tj.created_at DESC`,
+      [topicId]
+    )
+  );
+}
+
+export async function addTopicJournalEntry(input: { topicId: string; body: string; questionId?: string | null }): Promise<TopicJournalEntry | null> {
+  return withDb((db) => {
+    const body = input.body.trim();
+    if (!body) return null;
+    const ts = now();
+    const entryId = id();
+    db.run("INSERT INTO TopicJournal VALUES (?, ?, ?, ?, ?, ?)", [entryId, input.topicId, body, input.questionId ?? null, ts, ts]);
+    return { id: entryId, topic_id: input.topicId, body, question_id: input.questionId ?? null, question_preview: null, created_at: ts, updated_at: ts };
+  }, true);
+}
+
+export async function updateTopicJournalEntry(entryId: string, body: string): Promise<void> {
+  return withDb((db) => {
+    const trimmed = body.trim();
+    if (!trimmed) return;
+    db.run("UPDATE TopicJournal SET body = ?, updated_at = ? WHERE id = ?", [trimmed, now(), entryId]);
+  }, true);
+}
+
+export async function deleteTopicJournalEntry(entryId: string): Promise<void> {
+  return withDb((db) => { db.run("DELETE FROM TopicJournal WHERE id = ?", [entryId]); }, true);
 }

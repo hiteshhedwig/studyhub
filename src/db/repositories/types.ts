@@ -54,6 +54,18 @@ export type Cheatsheet = {
   next_revision_at?: string | null;
 };
 export type QuestionSet = { id: string; topic_id: string; session_id: string | null; title: string; source: string; imported_at: string; raw_json: string; topic_title?: string };
+export type CodeTestCase = {
+  description: string;
+  setup: string;
+  call: string;
+  expected_shape?: number[];
+  expected_value?: string;
+};
+export type CodeMeta = {
+  language: "python";
+  starter_code: string;
+  test_cases: CodeTestCase[];
+};
 export type Question = {
   id: string;
   question_set_id: string;
@@ -69,6 +81,8 @@ export type Question = {
   mastery_score: number;
   created_at: string;
   bookmarked?: number;
+  // Non-null for code questions; null for regular recall questions.
+  code_meta_json: string | null;
 };
 export type RevisionSchedule = {
   id: string;
@@ -109,3 +123,13 @@ export type ReviewActivityRow = { reviewed_at: string; seconds: number; topic_id
 export type NoteItem = { id: string; text: string; done: boolean };
 // (Note + NoteItem are imported by studyRepository.ts)
 export type Note = { id: string; title: string; items_json: string; color: string; created_at: string; updated_at: string };
+export type TopicJournalEntry = {
+  id: string;
+  topic_id: string;
+  body: string;
+  question_id: string | null;
+  // Joined from Question.question (first 120 chars) when question_id is set.
+  question_preview: string | null;
+  created_at: string;
+  updated_at: string;
+};

@@ -2234,6 +2234,240 @@ article.card:hover {
 .qnote-add .textarea { min-height: 52px; }
 .qnote-add .btn { justify-self: start; }
 
+/* ---------- Topic journal ---------- */
+/* Shared between the full section (Topic detail) and the collapsible panel (Practice). */
+
+/* ── Shared utilities ── */
+.tj-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.tj-q-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.tj-entry-actions { display: inline-flex; gap: 2px; margin-left: auto; }
+.tj-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms var(--ease), background 120ms var(--ease);
+}
+.tj-icon-btn:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
+.tj-icon-btn.danger:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.tj-edit-form { display: grid; gap: var(--space-2); }
+.tj-edit-form .textarea { min-height: 60px; }
+
+/* ── Topic detail page — full journal section ── */
+.tj-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+.tj-section-head svg { color: var(--accent); }
+.tj-section-head h2 { margin: 0; flex: 1; }
+
+/* New-entry zone — feels like opening a blank page */
+.tj-new-entry {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-soft));
+  transition: border-color 160ms var(--ease);
+}
+.tj-new-entry:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.tj-new-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tj-new-entry-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.tj-new-entry-date-label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+/* Borderless textarea that feels like a page */
+.tj-naked-area {
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.75;
+  color: var(--text-primary);
+  caret-color: var(--accent);
+}
+.tj-naked-area::placeholder { color: var(--muted); }
+.tj-new-entry-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  animation: calc-in 160ms var(--ease);
+}
+
+/* Date-grouped past entries */
+.tj-empty {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.tj-journal-feed { display: grid; gap: var(--space-5); margin-top: var(--space-2); }
+.tj-day-group { display: grid; gap: var(--space-4); }
+.tj-day-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.tj-day-divider::before,
+.tj-day-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+/* Individual entry — prose-style, soft left accent */
+.tj-journal-entry {
+  display: grid;
+  gap: var(--space-2);
+  padding-left: var(--space-4);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  transition: border-left-color 160ms var(--ease);
+}
+.tj-journal-entry:hover { border-left-color: var(--accent); }
+.tj-journal-body {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+.tj-journal-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.tj-journal-time { font-size: var(--text-xs); color: var(--muted); }
+
+/* ── Practice page — collapsible panel ── */
+.tj {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-soft));
+}
+.tj-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: color 120ms var(--ease);
+  text-align: left;
+}
+.tj-header:hover { color: var(--text-primary); }
+.tj-header svg:first-child { color: var(--accent); flex-shrink: 0; }
+.tj-chevron { flex-shrink: 0; transition: transform 200ms var(--ease); }
+.tj-chevron.open { transform: rotate(180deg); }
+.tj-body-reveal {
+  display: grid;
+  gap: var(--space-3);
+  animation: calc-in 200ms var(--ease);
+}
+.tj-feed {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+/* Compact entry variant inside the practice panel (reuses tj-journal-entry structure) */
+.tj-feed .tj-entry {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+}
+.tj-feed .tj-entry-body {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: var(--leading-normal);
+}
+.tj-feed .tj-entry-body p:first-child { margin-top: 0; }
+.tj-feed .tj-entry-body p:last-child { margin-bottom: 0; }
+.tj-feed .tj-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  flex-wrap: wrap;
+}
+.tj-feed .tj-entry-time { color: var(--muted); }
+.tj-more { font-size: var(--text-xs); color: var(--muted); margin: 0; text-align: center; padding: var(--space-1) 0; }
+.tj-add-form {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  animation: calc-in 180ms var(--ease);
+}
+.tj-add-toolbar { display: flex; align-items: center; gap: var(--space-2); }
+.tj-add-form .textarea { min-height: 80px; }
+.tj-add-form-actions { display: flex; gap: var(--space-2); }
+
 /* ---------- Calculator ---------- */
 .calc-fab {
   position: fixed;
@@ -2351,4 +2585,147 @@ article.card:hover {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---------- Code interpreter ---------- */
+
+.code-editor-wrap {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  transition: border-color 150ms var(--ease);
+}
+.code-editor-wrap:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.torch-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #f59e0b 12%, var(--surface-soft));
+  border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent);
+  color: #f59e0b;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.code-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.code-output-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.code-output {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #000 35%, var(--surface-soft));
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+  overflow-x: auto;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.code-output.error {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+.code-output.muted {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.test-results {
+  display: grid;
+  gap: 6px;
+}
+
+.test-row {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 6px 8px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 7px;
+  font-size: var(--text-sm);
+  border: 1px solid transparent;
+}
+.test-row.pass {
+  background: color-mix(in srgb, #22c55e 10%, var(--surface-soft));
+  border-color: color-mix(in srgb, #22c55e 25%, transparent);
+}
+.test-row.fail {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-soft));
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+}
+.test-badge {
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+.test-row.pass .test-badge { color: #22c55e; }
+.test-row.fail .test-badge { color: var(--danger); }
+.test-desc {
+  font-weight: 500;
+  line-height: 1.4;
+}
+.test-actual {
+  grid-column: 2;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Side-by-side code comparison after reveal */
+.code-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .code-compare { grid-template-columns: 1fr; }
+}
+.code-compare-pane {
+  display: grid;
+  gap: 8px;
+}
+.code-compare-label {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Settings: code interpreter spec card */
+.ci-spec-loaded {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ci-spec-info {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: 100px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
 }
