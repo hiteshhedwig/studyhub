@@ -11,10 +11,10 @@ import { CodeEditor } from "../../components/ui/CodeEditor";
 import { getPracticeShortcutsEnabled, getAiEvalConfig, getActiveExamDate } from "../../services/preferencesService";
 import { getAutocompleteEnabled, setAutocompleteEnabled, getTorchApiSpec } from "../../services/codeInterpreterPrefs";
 import { getTorchMockPython } from "../../services/torchMock";
-import { runCode as runPyCode, type RunResult } from "../../services/codeRunner";
+import { runCode as runPyCode, warmUpCodeRunner, type RunResult } from "../../services/codeRunner";
 import type { CodeMeta } from "../../db/repositories/types";
 import { aggregateReviewRating, buildTopicReviewSet, isQuestionDue } from "../../services/spacedRepetition";
-import { evaluateAnswer, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
+import { evaluateAnswer, evaluateCode, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
 import { useAppStore } from "../../store/appStore";
 import { addQuestionNote, addTopicJournalEntry, deleteQuestionNote, getQuestionNotes, getTopicJournal, updateQuestionNote } from "../../db/repositories/studyRepository";
 import type { Question, QuestionNoteWithLock, ReviewRating, TopicJournalEntry } from "../../db/repositories/types";
@@ -171,6 +171,7 @@ export function PracticePage() {
   const [shortcutsEnabled] = useState(() => getPracticeShortcutsEnabled());
   const [aiConfig] = useState(() => getAiEvalConfig());
   const [evalState, setEvalState] = useState<{ status: "idle" | "loading" | "done" | "error"; result?: EvaluationResult; error?: string }>({ status: "idle" });
+  const [codeEvalState, setCodeEvalState] = useState<{ status: "idle" | "loading" | "done" | "error"; result?: EvaluationResult; error?: string }>({ status: "idle" });
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
   const aiAvailable = aiConfig.enabled && Boolean(aiConfig.apiKey);
 
@@ -193,6 +194,7 @@ export function PracticePage() {
   const [userCode, setUserCode] = useState("");
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
+  const [pyodideReady, setPyodideReady] = useState(false);
   const [autocomplete, setAutocomplete] = useState(() => getAutocompleteEnabled());
   const topicsRef = useRef<Set<string>>(new Set());
   // Mirror `revealed` into a ref so the 1s timer tick reads it without re-subscribing.
@@ -278,6 +280,7 @@ export function PracticePage() {
     setEditingId(null);
     setRunResult(null);
     setRunning(false);
+    setCodeEvalState({ status: "idle" });
   }, [currentId]);
 
   // Reset code editor to starter code whenever the question changes
@@ -318,12 +321,27 @@ export function PracticePage() {
       const spec = getTorchApiSpec();
       const torchMockCode = spec ? getTorchMockPython(spec) : "";
       const result = await runPyCode({ code: userCode, testCases: codeMeta.test_cases, torchMockCode });
+      setPyodideReady(true);
       setRunResult(result);
     } catch (e: unknown) {
       setRunResult({ stdout: "", stderr: "", error: e instanceof Error ? e.message : String(e), testResults: [] });
     } finally {
       setRunning(false);
     }
+  }
+
+  async function runCodeEval() {
+    if (!current || !codeMeta) return;
+    setCodeEvalState({ status: "loading" });
+    const result = await evaluateCode({
+      question: current.question,
+      solution: current.answer,
+      userCode,
+      testResults: runResult?.testResults ?? [],
+      runError: runResult?.error ?? null,
+      stdout: runResult?.stdout ?? ""
+    });
+    setCodeEvalState(result.ok ? { status: "done", result: result.data } : { status: "error", error: result.error });
   }
 
   function toggleAutocomplete() {
@@ -456,6 +474,19 @@ export function PracticePage() {
     return () => window.clearInterval(tick);
   }, []);
 
+  // Pre-warm Pyodide in the background as soon as the user has any code questions,
+  // so the ~15 MB download happens silently rather than blocking the first Run click.
+  useEffect(() => {
+    if (store.questions.some((q) => q.code_meta_json !== null)) {
+      warmUpCodeRunner();
+      // Mark ready once the warmup response comes back (worker responds to __warmup__ id,
+      // which pending ignores, so we wait a generous delay instead).
+      const t = setTimeout(() => setPyodideReady(true), 20_000);
+      return () => clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
       <PageHeader title="Practice" eyebrow="Active recall first, answer second, rating last." />
@@ -561,7 +592,7 @@ export function PracticePage() {
                   <CodeEditor value={userCode} onChange={setUserCode} autoComplete={autocomplete} minHeight={300} />
                   <div className="code-toolbar">
                     <button className="btn primary" type="button" onClick={() => void handleCodeRun()} disabled={running}>
-                      {running ? "Running…" : "▶ Run code"}
+                      {running ? (pyodideReady ? "Running…" : "Loading Python runtime…") : "▶ Run code"}
                     </button>
                     <button className="btn small" type="button" onClick={toggleAutocomplete} title="Toggle editor autocomplete">
                       Autocomplete {autocomplete ? "on" : "off"}
@@ -662,7 +693,22 @@ export function PracticePage() {
                     </div>
                   </div>
                   <TopicJournalPanel key={currentId} topicId={current.topic_id} topicTitle={current.topic_title ?? ""} question={current} />
-                  <RatingButtons onRate={rate} />
+                  {aiAvailable && codeEvalState.status === "idle" ? (
+                    <button className="btn" type="button" onClick={() => void runCodeEval()} style={{ justifySelf: "start" }}>
+                      <Sparkles size={16} />AI code review
+                    </button>
+                  ) : null}
+                  {codeEvalState.status === "loading" ? (
+                    <div className="ai-eval-status"><span className="ai-spinner" aria-hidden="true" /> Reviewing your code…</div>
+                  ) : null}
+                  {codeEvalState.status === "error" ? (
+                    <div className="ai-eval-status error">
+                      <span>AI review failed: {codeEvalState.error}</span>
+                      <button className="btn small" type="button" onClick={() => void runCodeEval()}>Retry</button>
+                    </div>
+                  ) : null}
+                  {codeEvalState.status === "done" && codeEvalState.result ? <AiEvalCard result={codeEvalState.result} /> : null}
+                  <RatingButtons onRate={rate} suggested={codeEvalState.status === "done" && codeEvalState.result ? recallGradeToRating(codeEvalState.result.recall_grade) : undefined} />
                 </>
               )}
             </div>

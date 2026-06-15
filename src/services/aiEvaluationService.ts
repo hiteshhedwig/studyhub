@@ -80,7 +80,104 @@ function normalize(raw: unknown): unknown {
 }
 
 export type EvaluateInput = { question: string; canonical: string; userAnswer: string };
+export type CodeEvaluateInput = {
+  question: string;
+  solution: string;
+  userCode: string;
+  testResults: Array<{ description: string; passed: boolean; actual?: string; error?: string }>;
+  runError: string | null;
+  stdout: string;
+};
 export type EvaluateOutput = { ok: true; data: EvaluationResult } | { ok: false; error: string };
+
+const CODE_SYSTEM_PROMPT = `You are reviewing a student's Python implementation for an ML/DL coding practice problem.
+You are given: the problem statement, the reference solution, the student's code, test results, and any runtime output.
+
+Grade the student strictly but fairly. Test results are ground truth for correctness.
+Penalise wrong algorithm choice, missing edge cases, or non-idiomatic numpy. Reward correct shape handling, broadcasting, numerical stability awareness.
+
+Score guide (consistent with verdict and recall_grade):
+- 9-10 -> verdict "correct", recall_grade "easy"     — fully correct, clean numpy approach
+- 7-8  -> verdict "mostly_correct", recall_grade "easy" or "medium" — minor issues, passes most tests
+- 5-6  -> verdict "partially_correct", recall_grade "medium" — right idea, some tests fail or approach is off
+- 3-4  -> verdict "mostly_incorrect", recall_grade "hard" — wrong approach or fails most tests
+- 1-2  -> verdict "incorrect", recall_grade "hard" or "forgot" — fundamentally wrong
+- 0    -> verdict "blank", recall_grade "forgot"     — empty or unmodified starter code
+
+missed_points: up to 3 short bullets on what the reference solution does that theirs doesn't (technique, edge case, efficiency).
+incorrect_points: up to 3 short bullets on specific bugs or wrong choices in their code.
+interview_feedback: one concrete sentence — the single most important thing they should fix or remember.
+Return JSON only.`;
+
+export async function evaluateCode(input: CodeEvaluateInput): Promise<EvaluateOutput> {
+  const config = getAiEvalConfig();
+  if (!config.enabled) return { ok: false, error: "AI evaluation is turned off in Settings." };
+  if (!config.apiKey) return { ok: false, error: "Add your OpenRouter API key in Settings to use AI evaluation." };
+
+  const testSummary = input.testResults.length
+    ? input.testResults.map((t) => `  [${t.passed ? "PASS" : "FAIL"}] ${t.description}${!t.passed && (t.error ?? t.actual) ? ` — ${t.error ?? `got: ${t.actual ?? ""}`}` : ""}`).join("\n")
+    : "  No test cases.";
+
+  const userContent = [
+    `Problem:\n${input.question}`,
+    `Reference solution:\n\`\`\`python\n${input.solution}\n\`\`\``,
+    `Student's code:\n\`\`\`python\n${input.userCode.trim() || "(blank)"}\n\`\`\``,
+    `Test results:\n${testSummary}`,
+    input.runError ? `Runtime error:\n${input.runError}` : input.stdout ? `stdout:\n${input.stdout}` : null
+  ].filter(Boolean).join("\n\n");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(ENDPOINT, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://study-hub.local",
+        "X-Title": "Study Hub"
+      },
+      body: JSON.stringify({
+        model: config.model,
+        temperature: 0.2,
+        messages: [
+          { role: "system", content: CODE_SYSTEM_PROMPT },
+          { role: "user", content: userContent }
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: "code_evaluation", strict: true, schema: RESPONSE_JSON_SCHEMA }
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      if (response.status === 401) return { ok: false, error: "OpenRouter rejected the API key (401). Check it in Settings." };
+      if (response.status === 429) return { ok: false, error: "Rate limited by OpenRouter (429). Try again in a moment." };
+      return { ok: false, error: `OpenRouter error ${response.status}. ${detail.slice(0, 160)}`.trim() };
+    }
+
+    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = payload.choices?.[0]?.message?.content;
+    if (!content) return { ok: false, error: "The model returned an empty response." };
+
+    const parsed = evaluationSchema.safeParse(normalize(extractJson(content)));
+    if (!parsed.success) {
+      console.warn("[ai-eval-code] could not parse grade. raw:\n", content);
+      return { ok: false, error: "Couldn't parse the AI grade — avoid \":free\" models (use e.g. google/gemini-3.5-flash) in Settings." };
+    }
+    return { ok: true, data: parsed.data };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return { ok: false, error: "The AI request timed out. Check your connection and try again." };
+    }
+    return { ok: false, error: error instanceof Error ? error.message : "The AI request failed." };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function evaluateAnswer(input: EvaluateInput): Promise<EvaluateOutput> {
   const config = getAiEvalConfig();

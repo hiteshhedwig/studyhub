@@ -50,6 +50,15 @@ function getWorker(): Worker {
 
 const TIMEOUT_MS = 30_000;
 
+/**
+ * Spin up the worker and start loading Pyodide + numpy in the background.
+ * Safe to call multiple times — worker is a singleton and the warmup response
+ * is silently dropped (no pending entry registered for it).
+ */
+export function warmUpCodeRunner(): void {
+  getWorker().postMessage({ id: "__warmup__", code: "", testCases: [], torchMockCode: "" });
+}
+
 export function runCode(opts: { code: string; testCases?: CodeTestCase[]; torchMockCode?: string }): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID();
