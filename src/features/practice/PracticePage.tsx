@@ -224,34 +224,36 @@ export function PracticePage() {
       return;
     }
     const snapshot = useAppStore.getState().questions;
-    setReviewPool(buildTopicReviewSet(snapshot, reviewTopicId, getActiveExamDate()));
+    setReviewPool(buildTopicReviewSet(snapshot, reviewTopicId, getActiveExamDate()).filter((q) => q.code_meta_json === null));
     setReviewRatings([]);
     setIndex(0);
   }, [reviewTopicId, reviewId]);
 
   const pool = useMemo(() => {
+    const isRecall = (q: { code_meta_json: string | null }) => q.code_meta_json === null;
     if (mode === "due") {
       // Due = never reviewed, scheduled for today/earlier, or pulled in by exam mode
       // as the target date nears. Always shuffled so the queue isn't a fixed order.
       const examDate = getActiveExamDate();
-      const list = store.questions.filter((question) => isQuestionDue(question, examDate));
+      const list = store.questions.filter((question) => isRecall(question) && isQuestionDue(question, examDate));
       return shuffleWithSeed(list, shuffleSeed);
     }
     if (mode === "topic") {
-      const list = store.questions.filter((question) => !topicId || question.topic_id === topicId);
+      const list = store.questions.filter((question) => isRecall(question) && (!topicId || question.topic_id === topicId));
       return topicOrder === "shuffled" ? shuffleWithSeed(list, shuffleSeed) : list;
     }
     if (mode === "weak") {
-      return store.questions.filter((question) => question.mastery_score < 45 || question.difficulty === "hard");
+      return store.questions.filter((question) => isRecall(question) && (question.mastery_score < 45 || question.difficulty === "hard"));
     }
     if (mode === "bookmarked") {
-      return store.questions.filter((question) => question.bookmarked);
+      return store.questions.filter((question) => isRecall(question) && Boolean(question.bookmarked));
     }
     if (mode === "code") {
       const list = store.questions.filter((question) => question.code_meta_json !== null && (!topicId || question.topic_id === topicId));
       return topicOrder === "shuffled" ? shuffleWithSeed(list, shuffleSeed) : list;
     }
-    return shuffleWithSeed(store.questions, shuffleSeed);
+    // Random — recall only
+    return shuffleWithSeed(store.questions.filter(isRecall), shuffleSeed);
   }, [store.questions, mode, topicId, topicOrder, shuffleSeed]);
 
   // In a review the queue is finite and ordered (no modulo) so it can run out
