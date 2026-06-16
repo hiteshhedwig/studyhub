@@ -1,5 +1,17 @@
 import type { CodeTestCase } from "../db/repositories/types";
 
+export type ShapeVar = {
+  shape: number[];
+  dtype: string;
+  status: "new" | "changed";
+  from?: number[];
+};
+
+export type ShapeTraceLine = {
+  line: number;
+  vars: Record<string, ShapeVar>;
+};
+
 export type RunResult = {
   stdout: string;
   stderr: string;
@@ -10,6 +22,7 @@ export type RunResult = {
     actual?: string;
     error?: string;
   }>;
+  shapeTrace: ShapeTraceLine[];
 };
 
 type WorkerRequest = {

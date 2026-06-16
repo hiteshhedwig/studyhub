@@ -119,6 +119,34 @@ export function QuestionBankPage() {
     }
   }
 
+  async function replaceSetFromJson(setId: string, topicId: string, title: string, currentCount: number) {
+    const path = await pickLocalFile(["json"]);
+    if (!path) return;
+    let parsed: QuestionImport;
+    try {
+      const result = parseQuestionImport(await readTextFile(path));
+      if (!result.ok) { toast.danger(result.error); return; }
+      parsed = result.data;
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not read that file.");
+      return;
+    }
+    const ok = await confirmDialog({
+      title: `Replace "${title}"?`,
+      message: `This will delete all ${currentCount} existing questions and their review history, then import ${parsed.questions.length} new questions. This cannot be undone.`,
+      confirmLabel: "Replace set",
+      tone: "danger"
+    });
+    if (!ok) return;
+    try {
+      await store.deleteQuestionSet(setId);
+      await store.importQuestionSetForTopic(parsed, topicId);
+      toast.success(`Replaced with ${parsed.questions.length} new questions.`);
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not replace that set.");
+    }
+  }
+
   async function deleteSet(setId: string, title: string) {
     const ok = await confirmDialog({
       title: `Delete set "${title}"?`,
@@ -225,6 +253,7 @@ export function QuestionBankPage() {
                   </div>
                   <div className="button-row">
                     <button className="btn" onClick={() => void updateSetFromJson(set.id, set.title, setQuestions.length)}><RefreshCw size={17} />Update from JSON</button>
+                    <button className="btn" onClick={() => void replaceSetFromJson(set.id, set.topic_id, set.title, setQuestions.length)}><Import size={17} />Replace set</button>
                     <button className="btn danger" onClick={() => void deleteSet(set.id, set.title)}><Trash2 size={17} />Delete set</button>
                   </div>
                 </div>

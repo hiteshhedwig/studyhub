@@ -63,6 +63,7 @@ export type CodeTestCase = {
 };
 export type CodeMeta = {
   language: "python";
+  framework?: "numpy" | "torch";
   starter_code: string;
   test_cases: CodeTestCase[];
 };

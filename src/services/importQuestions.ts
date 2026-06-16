@@ -2,8 +2,8 @@ import { z } from "zod";
 
 const codeTestCaseSchema = z.object({
   description: z.string(),
-  setup: z.string(),
-  call: z.string(),
+  setup: z.string().default(""),
+  call: z.string().default(""),
   expected_shape: z.array(z.number()).optional(),
   expected_value: z.string().optional()
 });
@@ -20,6 +20,8 @@ export const questionImportSchema = z.object({
         // Recall questions: provide answer. Code questions: provide solution instead.
         answer: z.string().default(""),
         type: z.enum(["recall", "code"]).default("recall"),
+        kind: z.enum(["warmup", "implementation"]).optional(),
+        framework: z.enum(["numpy", "torch"]).optional(),
         language: z.string().optional(),
         starter_code: z.string().optional(),
         solution: z.string().optional(),

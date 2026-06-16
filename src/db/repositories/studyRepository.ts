@@ -358,7 +358,7 @@ export async function importQuestionSet(data: QuestionImport, sessionId?: string
     data.questions.forEach((question) => {
       const isCode = question.type === "code";
       const answer = isCode ? (question.solution ?? "") : question.answer;
-      const codeMeta = isCode ? JSON.stringify({ language: question.language ?? "python", starter_code: question.starter_code ?? "", test_cases: question.test_cases ?? [] }) : null;
+      const codeMeta = isCode ? JSON.stringify({ language: question.language ?? "python", framework: question.framework, starter_code: question.starter_code ?? "", test_cases: question.test_cases ?? [] }) : null;
       db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         id(),
         setId,
@@ -390,7 +390,7 @@ export async function importQuestionSetForTopic(data: QuestionImport, topicId: s
     data.questions.forEach((question) => {
       const isCode = question.type === "code";
       const answer = isCode ? (question.solution ?? "") : question.answer;
-      const codeMeta = isCode ? JSON.stringify({ language: question.language ?? "python", starter_code: question.starter_code ?? "", test_cases: question.test_cases ?? [] }) : null;
+      const codeMeta = isCode ? JSON.stringify({ language: question.language ?? "python", framework: question.framework, starter_code: question.starter_code ?? "", test_cases: question.test_cases ?? [] }) : null;
       db.run("INSERT INTO Question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         id(),
         setId,

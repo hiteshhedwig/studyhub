@@ -11,7 +11,7 @@ import { CodeEditor } from "../../components/ui/CodeEditor";
 import { getPracticeShortcutsEnabled, getAiEvalConfig, getActiveExamDate } from "../../services/preferencesService";
 import { getAutocompleteEnabled, setAutocompleteEnabled, getTorchApiSpec } from "../../services/codeInterpreterPrefs";
 import { getTorchMockPython } from "../../services/torchMock";
-import { runCode as runPyCode, warmUpCodeRunner, type RunResult } from "../../services/codeRunner";
+import { runCode as runPyCode, warmUpCodeRunner, type RunResult, type ShapeTraceLine } from "../../services/codeRunner";
 import type { CodeMeta } from "../../db/repositories/types";
 import { aggregateReviewRating, buildTopicReviewSet, isQuestionDue } from "../../services/spacedRepetition";
 import { evaluateAnswer, evaluateCode, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
@@ -158,6 +158,35 @@ function TopicJournalPanel({ topicId, topicTitle, question }: { topicId: string;
   );
 }
 
+function ShapeTracePanel({ trace, label = "Shape trace" }: { trace: ShapeTraceLine[]; label?: string }) {
+  return (
+    <div className="shape-trace">
+      <div className="shape-trace-header">{label}</div>
+      <table className="shape-trace-table">
+        <tbody>
+          {trace.map((entry) =>
+            Object.entries(entry.vars).map(([name, v]) => (
+              <tr key={`${entry.line}-${name}`} className={`shape-row shape-row--${v.status}`}>
+                <td className="shape-line">line {entry.line}</td>
+                <td className="shape-name">{name}</td>
+                <td className="shape-val">({v.shape.join(", ")})</td>
+                <td className="shape-dtype">{v.dtype}</td>
+                <td className="shape-status">
+                  {v.status === "changed" && v.from ? (
+                    <span className="shape-from">← was ({v.from.join(", ")})</span>
+                  ) : (
+                    <span className="shape-new">new</span>
+                  )}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function PracticePage() {
   const store = useAppStore();
   const [mode, setMode] = useState<Mode>("due");
@@ -195,6 +224,8 @@ export function PracticePage() {
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
   const [pyodideReady, setPyodideReady] = useState(false);
+  const [solutionRunResult, setSolutionRunResult] = useState<RunResult | null>(null);
+  const [solutionRunning, setSolutionRunning] = useState(false);
   const [autocomplete, setAutocomplete] = useState(() => getAutocompleteEnabled());
   const topicsRef = useRef<Set<string>>(new Set());
   // Mirror `revealed` into a ref so the 1s timer tick reads it without re-subscribing.
@@ -282,6 +313,8 @@ export function PracticePage() {
     setEditingId(null);
     setRunResult(null);
     setRunning(false);
+    setSolutionRunResult(null);
+    setSolutionRunning(false);
     setCodeEvalState({ status: "idle" });
   }, [currentId]);
 
@@ -322,13 +355,33 @@ export function PracticePage() {
     try {
       const spec = getTorchApiSpec();
       const torchMockCode = spec ? getTorchMockPython(spec) : "";
-      const result = await runPyCode({ code: userCode, testCases: codeMeta.test_cases, torchMockCode });
+      const isTorch = codeMeta.framework === "torch" || userCode.includes("import torch") || userCode.includes("from torch");
+      // Torch questions: inject mock and run for syntax checking, but skip test assertions
+      // since the mock can't produce values that match expected_value/expected_shape checks.
+      const result = await runPyCode({ code: userCode, testCases: isTorch ? [] : codeMeta.test_cases, torchMockCode });
       setPyodideReady(true);
       setRunResult(result);
     } catch (e: unknown) {
-      setRunResult({ stdout: "", stderr: "", error: e instanceof Error ? e.message : String(e), testResults: [] });
+      setRunResult({ stdout: "", stderr: "", error: e instanceof Error ? e.message : String(e), testResults: [], shapeTrace: [] });
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function handleSolutionRun() {
+    if (!current || !codeMeta) return;
+    setSolutionRunning(true);
+    try {
+      const spec = getTorchApiSpec();
+      const torchMockCode = spec ? getTorchMockPython(spec) : "";
+      const solutionCode = current.answer;
+      const isTorch = codeMeta.framework === "torch" || solutionCode.includes("import torch") || solutionCode.includes("from torch");
+      const result = await runPyCode({ code: solutionCode, testCases: isTorch ? [] : codeMeta.test_cases, torchMockCode });
+      setSolutionRunResult(result);
+    } catch (e: unknown) {
+      setSolutionRunResult({ stdout: "", stderr: "", error: e instanceof Error ? e.message : String(e), testResults: [], shapeTrace: [] });
+    } finally {
+      setSolutionRunning(false);
     }
   }
 
@@ -586,8 +639,8 @@ export function PracticePage() {
                 </span>
               </div>
               <RichText className="prompt">{current.question}</RichText>
-              {(userCode.includes("import torch") || userCode.includes("from torch")) ? (
-                <div className="torch-warning">⚠ torch is mocked — basic ops only; use numpy for numerical accuracy</div>
+              {(codeMeta?.framework === "torch" || userCode.includes("import torch") || userCode.includes("from torch")) ? (
+                <div className="torch-warning">⚠ torch is mocked — run checks syntax only, no test assertions</div>
               ) : null}
               {!revealed ? (
                 <>
@@ -613,7 +666,9 @@ export function PracticePage() {
                       ) : (
                         <pre className="code-output muted">No output</pre>
                       )}
-                      {runResult.testResults.length > 0 ? (
+                      {(codeMeta?.framework === "torch" || userCode.includes("import torch") || userCode.includes("from torch")) && !runResult.error ? (
+                        <div className="torch-syntax-note">Syntax OK — test assertions skipped (torch is mocked, real execution not available)</div>
+                      ) : runResult.testResults.length > 0 ? (
                         <div className="test-results">
                           {runResult.testResults.map((tr, i) => (
                             <div key={i} className={`test-row ${tr.passed ? "pass" : "fail"}`}>
@@ -626,6 +681,9 @@ export function PracticePage() {
                           ))}
                         </div>
                       ) : null}
+                      {runResult.shapeTrace.length > 0 ? (
+                        <ShapeTracePanel trace={runResult.shapeTrace} />
+                      ) : null}
                     </div>
                   ) : null}
                 </>
@@ -635,10 +693,29 @@ export function PracticePage() {
                     <div className="code-compare-pane">
                       <h3 className="code-compare-label">Your attempt</h3>
                       <CodeEditor value={userCode} readOnly minHeight={220} />
+                      {runResult?.shapeTrace && runResult.shapeTrace.length > 0 ? (
+                        <ShapeTracePanel trace={runResult.shapeTrace} label="Your shapes" />
+                      ) : null}
                     </div>
                     <div className="code-compare-pane">
-                      <h3 className="code-compare-label">Solution</h3>
+                      <div className="code-compare-label-row">
+                        <h3 className="code-compare-label">Solution</h3>
+                        {codeMeta ? (
+                          <button className="btn small" type="button" onClick={() => void handleSolutionRun()} disabled={solutionRunning}>
+                            {solutionRunning ? "Running…" : "▶ Run solution"}
+                          </button>
+                        ) : null}
+                      </div>
                       <CodeEditor value={current.answer} readOnly minHeight={220} />
+                      {solutionRunResult ? (
+                        solutionRunResult.error ? (
+                          <pre className="code-output error" style={{ marginTop: 8 }}>{solutionRunResult.error}</pre>
+                        ) : solutionRunResult.shapeTrace.length > 0 ? (
+                          <ShapeTracePanel trace={solutionRunResult.shapeTrace} label="Solution shapes" />
+                        ) : (
+                          <p className="muted" style={{ fontSize: "var(--text-sm)", marginTop: 8 }}>No array shapes captured.</p>
+                        )
+                      ) : null}
                     </div>
                   </div>
                   <div className="qnote">
