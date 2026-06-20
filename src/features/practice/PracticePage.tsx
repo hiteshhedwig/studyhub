@@ -585,7 +585,15 @@ export function PracticePage() {
           <>
             <select className="select" style={{ maxWidth: 260 }} value={topicId} onChange={(event) => { setTopicId(event.target.value); setIndex(0); setShuffleSeed(Date.now()); }}>
               <option value="">{mode === "code" ? "All coding topics" : "All topics"}</option>
-              {store.topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}
+              {store.topics.map((topic) => {
+                if (mode === "code") {
+                  const count = store.questions.filter((q) => q.code_meta_json !== null && q.topic_id === topic.id).length;
+                  if (count === 0) return null;
+                  return <option key={topic.id} value={topic.id}>{topic.title} ({count})</option>;
+                }
+                const count = store.questions.filter((q) => q.code_meta_json === null && q.topic_id === topic.id).length;
+                return <option key={topic.id} value={topic.id}>{topic.title} ({count})</option>;
+              })}
             </select>
             <div className="button-row" role="radiogroup" aria-label="Question order">
               <button
