@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from "d3-force";
+import type { SimulationNodeDatum, SimulationLinkDatum } from "d3-force";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, BookOpen, Check, ChevronLeft, ChevronRight, ExternalLink, Feather, FileText, LayoutGrid, Minus, MessageSquare, Network, Pencil, Quote, Trash2, Video } from "lucide-react";
 import { sessionFocusMinutes, topicHasLateRevision, topicPracticeStats, topicTrend, type Trend } from "../../services/statsService";
@@ -173,128 +175,269 @@ type ViewMode = "list" | "map";
 type SortKey = "created" | "alpha" | "weak";
 type TopicGroup = { catId: string; catName: string; catColor: string; topics: Topic[] };
 
-type MapNode = { id: string; x: number; y: number; r: number; label: string; type: "center" | "category" | "topic"; color: string; topicId: string | null };
-type MapEdge = { from: string; to: string; color: string };
+type MapNodeBase = { id: string; r: number; label: string; type: "center" | "category" | "topic"; color: string; topicId: string | null };
+type MapNode = MapNodeBase & SimulationNodeDatum;
+type MapEdge = SimulationLinkDatum<MapNode> & { color: string; sourceId: string; targetId: string };
+type Viewport = { x: number; y: number; k: number };
+
+const W = 1000, H = 680;
 
 function TopicMindMap({ grouped, navigate }: { grouped: TopicGroup[]; navigate: (to: string) => void }) {
   const [hovered, setHovered] = useState<string | null>(null);
-  const W = 1000, H = 740;
+  const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const [vp, setVp] = useState<Viewport>({ x: 0, y: 0, k: 1 });
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<{ sx: number; sy: number; vpX: number; vpY: number; moved: boolean } | null>(null);
+  const runId = useRef(0);
   const cx = W / 2, cy = H / 2;
 
+  // Seed nodes radially so d3 starts from a reasonable layout
   const { nodes, edges } = useMemo(() => {
     const nodes: MapNode[] = [];
     const edges: MapEdge[] = [];
-    nodes.push({ id: "__center__", x: cx, y: cy, r: 28, label: "Topics", type: "center", color: "var(--accent)", topicId: null });
     const N = grouped.length;
+
+    nodes.push({ id: "__center__", r: 22, label: "Topics", type: "center", color: "var(--accent)", topicId: null, x: cx, y: cy, fx: cx, fy: cy });
+
     grouped.forEach(({ catId, catName, catColor, topics: catTopics }, i) => {
       const catAngle = N > 0 ? (i / N) * 2 * Math.PI - Math.PI / 2 : 0;
       const M = catTopics.length;
-      const R_CAT = 190 + Math.min(M * 5, 50);
+      const R_CAT = 140;
       const catX = cx + R_CAT * Math.cos(catAngle);
       const catY = cy + R_CAT * Math.sin(catAngle);
       const catNodeId = `cat-${catId}`;
       const color = catColor || "var(--accent)";
-      nodes.push({ id: catNodeId, x: catX, y: catY, r: 14 + Math.min(M * 1.5, 12), label: catName, type: "category", color, topicId: null });
-      edges.push({ from: "__center__", to: catNodeId, color });
-      const R_TOPIC = Math.max(90, 68 + M * 20);
+
+      nodes.push({ id: catNodeId, r: 13 + Math.min(M, 8), label: catName, type: "category", color, topicId: null, x: catX, y: catY });
+      edges.push({ source: "__center__", target: catNodeId, color, sourceId: "__center__", targetId: catNodeId });
+
       catTopics.forEach((topic, j) => {
-        const arc = M === 1 ? 0 : Math.min(Math.PI * 0.95, 0.38 + M * 0.22);
+        const arc = M === 1 ? 0 : Math.min(Math.PI * 0.85, 0.4 + M * 0.18);
         const tAngle = catAngle + (M > 1 ? arc * (j / (M - 1) - 0.5) : 0);
-        nodes.push({ id: topic.id, x: catX + R_TOPIC * Math.cos(tAngle), y: catY + R_TOPIC * Math.sin(tAngle), r: 7 + topic.mastery_score / 18, label: topic.title, type: "topic", color, topicId: topic.id });
-        edges.push({ from: catNodeId, to: topic.id, color });
+        const R_TOPIC = 90;
+        nodes.push({
+          id: topic.id, r: 8 + topic.mastery_score / 20, label: topic.title,
+          type: "topic", color, topicId: topic.id,
+          x: catX + R_TOPIC * Math.cos(tAngle), y: catY + R_TOPIC * Math.sin(tAngle)
+        });
+        edges.push({ source: catNodeId, target: topic.id, color, sourceId: catNodeId, targetId: topic.id });
       });
     });
+
     return { nodes, edges };
   }, [grouped, cx, cy]);
 
-  const nodeById = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
+  // Run simulation synchronously, then auto-fit the viewport to show all nodes
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    const id = ++runId.current;
+
+    const simNodes = nodes.map(n => ({ ...n }));
+    const nodeIndex = new Map(simNodes.map(n => [n.id, n]));
+    const simEdges = edges.map(e => ({
+      ...e,
+      source: nodeIndex.get(e.sourceId)!,
+      target: nodeIndex.get(e.targetId)!,
+    }));
+
+    forceSimulation<MapNode>(simNodes)
+      .force("link", forceLink<MapNode, typeof simEdges[0]>(simEdges)
+        .id(d => d.id)
+        .distance(d => (d.target as MapNode).type === "category" ? 130 : 80)
+        .strength(0.8)
+      )
+      .force("charge", forceManyBody<MapNode>().strength(d => {
+        if (d.type === "center") return -400;
+        if (d.type === "category") return -180;
+        return -60;
+      }))
+      .force("center", forceCenter(cx, cy).strength(0.1))
+      .force("collide", forceCollide<MapNode>(d => d.r + 16).strength(0.9))
+      .stop()
+      .tick(250);
+
+    if (id !== runId.current) return;
+
+    const pos = new Map(simNodes.map(n => [n.id, { x: n.x ?? cx, y: n.y ?? cy }]));
+    setPositions(pos);
+
+    // Auto-fit: compute graph bounding box and set viewport
+    const pad = 60;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const n of simNodes) {
+      const labelExtra = n.type === "topic" ? 70 : 90; // rough label width
+      minX = Math.min(minX, (n.x ?? cx) - n.r - labelExtra);
+      maxX = Math.max(maxX, (n.x ?? cx) + n.r + labelExtra);
+      minY = Math.min(minY, (n.y ?? cy) - n.r - 20);
+      maxY = Math.max(maxY, (n.y ?? cy) + n.r + 20);
+    }
+    const gW = maxX - minX || 1, gH = maxY - minY || 1;
+    const k = Math.min((W - pad * 2) / gW, (H - pad * 2) / gH, 1.8);
+    setVp({ k, x: pad - minX * k, y: pad - minY * k });
+  }, [nodes, edges, cx, cy]);
+
+  // Scroll to zoom (toward cursor)
+  function onWheel(e: React.WheelEvent<SVGSVGElement>) {
+    e.preventDefault();
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width * W;
+    const my = (e.clientY - rect.top) / rect.height * H;
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    setVp(prev => {
+      const k = Math.max(0.2, Math.min(4, prev.k * factor));
+      return { k, x: mx - (mx - prev.x) * (k / prev.k), y: my - (my - prev.y) * (k / prev.k) };
+    });
+  }
+
+  // Drag to pan
+  function onMouseDown(e: React.MouseEvent<SVGSVGElement>) {
+    dragRef.current = { sx: e.clientX, sy: e.clientY, vpX: vp.x, vpY: vp.y, moved: false };
+  }
+  function onMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.sx, dy = e.clientY - dragRef.current.sy;
+    if (!dragRef.current.moved && Math.hypot(dx, dy) > 4) dragRef.current.moved = true;
+    if (dragRef.current.moved) {
+      // Capture values before setVp — the updater runs async and dragRef.current
+      // may be null by then (onMouseUp fires between the check and the callback).
+      const { vpX, vpY } = dragRef.current;
+      setVp(prev => ({ ...prev, x: vpX + dx, y: vpY + dy }));
+    }
+  }
+  function onMouseUp() { dragRef.current = null; }
+
   const adjacency = useMemo(() => {
     const m = new Map<string, Set<string>>();
     for (const e of edges) {
-      if (!m.has(e.from)) m.set(e.from, new Set());
-      if (!m.has(e.to)) m.set(e.to, new Set());
-      m.get(e.from)!.add(e.to);
-      m.get(e.to)!.add(e.from);
+      if (!m.has(e.sourceId)) m.set(e.sourceId, new Set());
+      if (!m.has(e.targetId)) m.set(e.targetId, new Set());
+      m.get(e.sourceId)!.add(e.targetId);
+      m.get(e.targetId)!.add(e.sourceId);
     }
     return m;
   }, [edges]);
-  const parentOf = useMemo(() => { const m = new Map<string, string>(); for (const e of edges) m.set(e.to, e.from); return m; }, [edges]);
 
   function isHighlit(id: string) { return hovered !== null && (id === hovered || (adjacency.get(hovered)?.has(id) ?? false)); }
 
-  function labelPos(node: MapNode): { x: number; y: number; anchor: "middle" | "start" | "end"; dy: string } {
-    if (node.type === "center") return { x: node.x, y: node.y, anchor: "middle", dy: "0.35em" };
-    const parent = nodeById.get(parentOf.get(node.id) ?? "");
-    const refX = parent ? parent.x : cx;
-    const refY = parent ? parent.y : cy;
-    const dx = node.x - refX, dy = node.y - refY;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    const off = node.r + 13;
-    const anchor: "middle" | "start" | "end" = Math.abs(dx / dist) < 0.28 ? "middle" : dx > 0 ? "start" : "end";
-    return { x: node.x + (dx / dist) * off, y: node.y + (dy / dist) * off, anchor, dy: "0.35em" };
+  function labelPos(node: MapNode, pos: { x: number; y: number }): { x: number; y: number; anchor: "middle" | "start" | "end" } {
+    if (node.type === "center") return { x: pos.x, y: pos.y, anchor: "middle" };
+    // Push label in the direction away from the parent node
+    let refX = cx, refY = cy;
+    for (const e of edges) {
+      if (e.targetId === node.id) {
+        const p = positions.get(e.sourceId);
+        if (p) { refX = p.x; refY = p.y; }
+        break;
+      }
+    }
+    const dx = pos.x - refX, dy = pos.y - refY;
+    const dist = Math.hypot(dx, dy) || 1;
+    const off = node.r + 10;
+    const anchor: "middle" | "start" | "end" = Math.abs(dx / dist) < 0.3 ? "middle" : dx > 0 ? "start" : "end";
+    return { x: pos.x + (dx / dist) * off, y: pos.y + (dy / dist) * off, anchor };
   }
 
+  const ready = positions.size > 0;
+  const isDragging = dragRef.current?.moved ?? false;
+
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", maxHeight: 700 }} aria-label="Topics mind map">
+    <div className="card" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
+      <button
+        className="btn small ghost"
+        type="button"
+        style={{ position: "absolute", top: 10, right: 10, zIndex: 2, fontSize: "var(--text-xs)" }}
+        onClick={() => {
+          // Re-fit: recompute from current positions
+          if (positions.size === 0) return;
+          const pad = 60;
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          for (const [, p] of positions) {
+            minX = Math.min(minX, p.x - 80); maxX = Math.max(maxX, p.x + 80);
+            minY = Math.min(minY, p.y - 30); maxY = Math.max(maxY, p.y + 30);
+          }
+          const gW = maxX - minX || 1, gH = maxY - minY || 1;
+          const k = Math.min((W - pad * 2) / gW, (H - pad * 2) / gH, 1.8);
+          setVp({ k, x: pad - minX * k, y: pad - minY * k });
+        }}
+      >
+        Fit
+      </button>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", height: 580, display: "block", opacity: ready ? 1 : 0, transition: "opacity 0.25s", cursor: isDragging ? "grabbing" : "grab" }}
+        aria-label="Topics mind map"
+        onWheel={onWheel}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+      >
         <defs>
           <radialGradient id="mm-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.08" />
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.07" />
             <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
           </radialGradient>
         </defs>
-        <ellipse cx={cx} cy={cy} rx={420} ry={360} fill="url(#mm-glow)" />
-        {edges.map((edge, i) => {
-          const fn = nodeById.get(edge.from);
-          const tn = nodeById.get(edge.to);
-          if (!fn || !tn) return null;
-          const hi = hovered !== null && (edge.from === hovered || edge.to === hovered);
-          return (
-            <line key={i} x1={fn.x} y1={fn.y} x2={tn.x} y2={tn.y}
-              stroke={hi ? edge.color : "var(--border-strong)"}
-              strokeWidth={hi ? 2 : 1}
-              strokeOpacity={hovered ? (hi ? 0.9 : 0.14) : 0.42}
-            />
-          );
-        })}
-        {nodes.map(node => {
-          const hi = isHighlit(node.id);
-          const dimmed = hovered !== null && !hi;
-          const lp = labelPos(node);
-          const showLabel = node.type !== "topic" || hi;
-          return (
-            <g key={node.id} style={{ cursor: node.topicId ? "pointer" : "default" }}
-              onMouseEnter={() => setHovered(node.id)}
-              onMouseLeave={() => setHovered(null)}
-              onClick={() => node.topicId && navigate(`/topics/${node.topicId}`)}
-            >
-              {hi && node.type !== "center" && (
-                <circle cx={node.x} cy={node.y} r={node.r + 9} fill={node.color} fillOpacity={0.15} />
-              )}
-              <circle cx={node.x} cy={node.y} r={node.r}
-                fill={node.type === "center" ? "var(--accent)" : node.color}
-                fillOpacity={dimmed ? 0.12 : node.type === "topic" ? 0.65 : 0.88}
-                stroke={hi ? node.color : "var(--border)"}
-                strokeWidth={hi ? 2.5 : node.type === "center" ? 2 : 1}
-                strokeOpacity={dimmed ? 0.15 : 0.75}
+
+        <g transform={`translate(${vp.x},${vp.y}) scale(${vp.k})`}>
+          <ellipse cx={cx} cy={cy} rx={350} ry={300} fill="url(#mm-glow)" />
+
+          {edges.map((edge, i) => {
+            const fp = positions.get(edge.sourceId);
+            const tp = positions.get(edge.targetId);
+            if (!fp || !tp) return null;
+            const hi = hovered !== null && (edge.sourceId === hovered || edge.targetId === hovered);
+            return (
+              <line key={i} x1={fp.x} y1={fp.y} x2={tp.x} y2={tp.y}
+                stroke={hi ? edge.color : "var(--border-strong)"}
+                strokeWidth={hi ? 1.5 / vp.k : 0.8 / vp.k}
+                strokeOpacity={hovered ? (hi ? 0.85 : 0.1) : 0.38}
               />
-              {showLabel && (
-                <text x={lp.x} y={lp.y} dy={lp.dy} textAnchor={lp.anchor}
+            );
+          })}
+
+          {nodes.map(node => {
+            const pos = positions.get(node.id);
+            if (!pos) return null;
+            const hi = isHighlit(node.id);
+            const dimmed = hovered !== null && !hi;
+            const lp = labelPos(node, pos);
+            const fontSize = node.type === "center" ? 11 : node.type === "category" ? 11 : 10;
+            return (
+              <g key={node.id}
+                style={{ cursor: node.topicId ? "pointer" : "default" }}
+                onMouseEnter={() => setHovered(node.id)}
+                onMouseLeave={() => setHovered(null)}
+                onClick={() => { if (!dragRef.current?.moved) { node.topicId && navigate(`/topics/${node.topicId}`); } }}
+              >
+                {hi && node.type !== "center" && (
+                  <circle cx={pos.x} cy={pos.y} r={node.r + 8} fill={node.color} fillOpacity={0.15} />
+                )}
+                <circle cx={pos.x} cy={pos.y} r={node.r}
+                  fill={node.type === "center" ? "var(--accent)" : node.color}
+                  fillOpacity={dimmed ? 0.1 : node.type === "topic" ? 0.6 : 0.85}
+                  stroke={hi ? node.color : "var(--border)"}
+                  strokeWidth={(hi ? 2 : 1) / vp.k}
+                  strokeOpacity={dimmed ? 0.12 : 0.7}
+                />
+                <text x={lp.x} y={lp.y} dy="0.35em" textAnchor={lp.anchor}
                   fill={dimmed ? "var(--muted)" : hi ? "var(--text-primary)" : node.type === "center" ? "var(--accent-contrast)" : "var(--text-secondary)"}
-                  fontSize={node.type === "center" ? 10 : node.type === "category" ? 10 : 9}
+                  fontSize={fontSize / vp.k}
                   fontWeight={node.type === "topic" ? 400 : 700}
-                  paintOrder="stroke" stroke="var(--surface)" strokeWidth={3} strokeLinejoin="round"
+                  paintOrder="stroke" stroke="var(--surface)" strokeWidth={3 / vp.k} strokeLinejoin="round"
                   style={{ pointerEvents: "none", userSelect: "none" }}
                 >
-                  {node.label.length > 20 ? node.label.slice(0, 18) + "…" : node.label}
+                  {node.label.length > 22 ? node.label.slice(0, 20) + "…" : node.label}
                 </text>
-              )}
-            </g>
-          );
-        })}
+              </g>
+            );
+          })}
+        </g>
       </svg>
-      <p className="muted" style={{ fontSize: "var(--text-xs)", padding: "6px 14px 10px", margin: 0 }}>
-        Hover to highlight · click a topic to open it · node size = mastery
+      <p className="muted" style={{ fontSize: "var(--text-xs)", padding: "5px 14px 8px", margin: 0 }}>
+        Scroll to zoom · drag to pan · click topic to open · node size = mastery
       </p>
     </div>
   );

@@ -1,6 +1,6 @@
 [package]
 name = "study-hub"
-version = "0.1.40"
+version = "0.1.41"
 description = "A local-first personal study system."
 authors = ["Study Hub"]
 edition = "2021"
