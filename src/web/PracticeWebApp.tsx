@@ -24,6 +24,8 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+type Difficulty = "" | "easy" | "medium" | "hard";
+
 function shuffleWithSeed<T>(items: T[], seed: number): T[] {
   let state = seed || 1;
   const rng = () => {
@@ -49,6 +51,7 @@ export function PracticeWebApp() {
   const savedSession = usePracticeStore.getState().reviewSession;
   const [mode, setMode] = useState<"due" | "all" | "reviews">(() => (savedSession ? "reviews" : "due"));
   const [topicId, setTopicId] = useState("");
+  const [difficulty, setDifficulty] = useState<Difficulty>("");
   const [seed, setSeed] = useState(() => Date.now());
   const [index, setIndex] = useState(() => savedSession?.index ?? 0);
   const [revealed, setRevealed] = useState(false);
@@ -111,15 +114,21 @@ export function PracticeWebApp() {
     if (questions.length === 0) return [];
     if (mode === "reviews") return activeReview ? reviewPool : [];
     const exam = examDate ? parseISO(examDate) : null;
+    const stableSort = (list: ExportedQuestion[]) => [...list].sort((a, b) => a.id.localeCompare(b.id));
     let list = topicId ? questions.filter((q) => q.topic_id === topicId) : questions;
+    if (difficulty) list = list.filter((q) => q.difficulty === difficulty);
     if (mode === "due") list = list.filter((q) => isQuestionDue(q, exam));
-    return shuffleWithSeed(list, seed);
-  }, [questions, mode, topicId, examDate, seed, activeReview, reviewPool]);
+    return shuffleWithSeed(stableSort(list), seed);
+  }, [questions, mode, topicId, difficulty, examDate, seed, activeReview, reviewPool]);
 
   // A frozen review runs to its end rather than wrapping; once every card is rated
   // (or skipped) we show a completion card instead of looping back to the first.
   const reviewDone = mode === "reviews" && activeReview !== null && index >= reviewPool.length;
-  const current = pool.length && !reviewDone ? pool[index % pool.length] : undefined;
+  // "All" is finite — show a completion card instead of silently looping. "Due" loops.
+  const sessionDone = mode === "all" && pool.length > 0 && index >= pool.length;
+  const current = pool.length && !reviewDone && !sessionDone
+    ? pool[mode === "due" ? index % pool.length : index]
+    : undefined;
   const activeReviewTitle = activeReview
     ? reviewTopics.find((topic) => topic.topicId === activeReview)?.title ?? reviewPool[0]?.topic_title ?? null
     : null;
@@ -273,13 +282,30 @@ export function PracticeWebApp() {
                   {topics.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
                 </select>
               ) : null}
+              <div className="button-row" role="radiogroup" aria-label="Difficulty filter">
+                {(["", "easy", "medium", "hard"] as Difficulty[]).map((d) => (
+                  <button
+                    key={d || "all"}
+                    type="button"
+                    className={`btn small ${difficulty === d ? "primary" : ""}`}
+                    onClick={() => { setDifficulty(d); setIndex(0); }}
+                  >
+                    {d === "" ? "All" : d.charAt(0).toUpperCase() + d.slice(1)}
+                  </button>
+                ))}
+              </div>
             </>
           ) : activeReview ? (
             <button className="btn small" type="button" onClick={exitReview}>← Reviews</button>
           ) : null}
         </div>
 
-        {mode === "reviews" && !activeReview ? (
+        {sessionDone ? (
+          <section className="card pw-empty">
+            <p>All {pool.length} question{pool.length === 1 ? "" : "s"} done — you've seen every card in this set.</p>
+            <button className="btn primary" type="button" onClick={() => { setIndex(0); setSeed(Date.now()); }}>Practice again</button>
+          </section>
+        ) : mode === "reviews" && !activeReview ? (
           <section className="card pw-reviews">
             <div className="split">
               <h3 style={{ margin: 0 }}>Topic reviews due</h3>
@@ -309,7 +335,7 @@ export function PracticeWebApp() {
           <section className="card raised pw-card">
             <div className="split">
               <span className="pill">{current.topic_title} · {current.difficulty}</span>
-              <span className="muted">{mode === "reviews" && activeReview ? `${reviewedCount} / ${pool.length} recalled` : `${(index % pool.length) + 1} / ${pool.length}`}</span>
+              <span className="muted">{mode === "reviews" && activeReview ? `${reviewedCount} / ${pool.length} recalled` : mode === "all" ? `${index + 1} / ${pool.length}` : `${(index % pool.length) + 1} / ${pool.length}`}</span>
             </div>
             <RichText className="prompt">{current.question}</RichText>
             <label className="field">
