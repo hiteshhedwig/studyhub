@@ -264,29 +264,33 @@ export function PracticePage() {
 
   const pool = useMemo(() => {
     const isRecall = (q: { code_meta_json: string | null }) => q.code_meta_json === null;
+    // sort by id before any shuffle so the permutation is stable across store
+    // refreshes — questions are loaded ORDER BY next_due_at which changes every
+    // time a card is rated, so without a stable pre-sort the same seed produces
+    // a different shuffle after each rating and questions repeat mid-session.
+    const stableSort = (list: typeof store.questions) => [...list].sort((a, b) => a.id.localeCompare(b.id));
+
     if (mode === "due") {
-      // Due = never reviewed, scheduled for today/earlier, or pulled in by exam mode
-      // as the target date nears. Always shuffled so the queue isn't a fixed order.
       const examDate = getActiveExamDate();
-      const list = store.questions.filter((question) => isRecall(question) && isQuestionDue(question, examDate));
+      const list = stableSort(store.questions.filter((question) => isRecall(question) && isQuestionDue(question, examDate)));
       return shuffleWithSeed(list, shuffleSeed);
     }
     if (mode === "topic") {
       const list = store.questions.filter((question) => isRecall(question) && (!topicId || question.topic_id === topicId) && (!difficulty || question.difficulty === difficulty));
-      return topicOrder === "shuffled" ? shuffleWithSeed(list, shuffleSeed) : list;
+      return topicOrder === "shuffled" ? shuffleWithSeed(stableSort(list), shuffleSeed) : stableSort(list);
     }
     if (mode === "weak") {
-      return store.questions.filter((question) => isRecall(question) && (question.mastery_score < 45 || question.difficulty === "hard"));
+      return stableSort(store.questions.filter((question) => isRecall(question) && (question.mastery_score < 45 || question.difficulty === "hard")));
     }
     if (mode === "bookmarked") {
-      return store.questions.filter((question) => isRecall(question) && Boolean(question.bookmarked));
+      return stableSort(store.questions.filter((question) => isRecall(question) && Boolean(question.bookmarked)));
     }
     if (mode === "code") {
       const list = store.questions.filter((question) => question.code_meta_json !== null && (!topicId || question.topic_id === topicId) && (!difficulty || question.difficulty === difficulty));
-      return topicOrder === "shuffled" ? shuffleWithSeed(list, shuffleSeed) : list;
+      return topicOrder === "shuffled" ? shuffleWithSeed(stableSort(list), shuffleSeed) : stableSort(list);
     }
     // Random — recall only
-    return shuffleWithSeed(store.questions.filter(isRecall), shuffleSeed);
+    return shuffleWithSeed(stableSort(store.questions.filter(isRecall)), shuffleSeed);
   }, [store.questions, mode, topicId, topicOrder, shuffleSeed, difficulty]);
 
   // Due and random modes loop infinitely (large dynamic pool). Finite modes
