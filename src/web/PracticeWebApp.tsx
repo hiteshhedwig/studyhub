@@ -332,6 +332,18 @@ export function PracticeWebApp() {
             <button className="btn" type="button" onClick={exitReview}>Back to reviews</button>
           </section>
         ) : current ? (
+          <>
+          {(() => {
+            const sessionRatings = attempts.filter((a) => a.question_id === current.id).map((a) => a.rating);
+            const allRatings = [...(current.recent_ratings ?? []), ...sessionRatings];
+            return allRatings.length > 0 ? (
+              <div className="card qh-strip" aria-label="Past ratings for this question">
+                {allRatings.map((r, i) => (
+                  <div key={i} className={`qh-bar qh-bar--${r}`} title={r} />
+                ))}
+              </div>
+            ) : null;
+          })()}
           <section className="card raised pw-card">
             <div className="split">
               <span className="pill">{current.topic_title} · {current.difficulty}</span>
@@ -354,6 +366,7 @@ export function PracticeWebApp() {
               </>
             )}
           </section>
+          </>
         ) : mode === "reviews" ? (
           <section className="card pw-empty">
             <p>Nothing to recall for {activeReviewTitle ?? "this topic"} right now.</p>

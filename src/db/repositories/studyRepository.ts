@@ -629,6 +629,7 @@ export type ExportedQuestion = {
   last_reviewed_at: string | null;
   review_count: number;
   mastery_score: number;
+  recent_ratings: ReviewRating[];
 };
 
 /** Snapshot of the question bank for the phone practice app (questions-out hop). */
@@ -640,19 +641,35 @@ export async function exportPracticeQuestions(): Promise<ExportedQuestion[]> {
        FROM Question JOIN Topic ON Topic.id = Question.topic_id
        ORDER BY Question.rowid ASC`
     );
-    return rows.map((q) => ({
-      id: q.id,
-      question: q.question,
-      answer: q.answer,
-      difficulty: q.difficulty,
-      tags: JSON.parse(q.tags_json) as string[],
-      topic_id: q.topic_id,
-      topic_title: q.topic_title,
-      next_due_at: q.next_due_at,
-      last_reviewed_at: q.last_reviewed_at,
-      review_count: q.review_count,
-      mastery_score: q.mastery_score
-    }));
+    // Fetch all ratings oldest-first in one pass, then group by question_id.
+    const allRatings = toRows<{ question_id: string; rating: ReviewRating }>(
+      db,
+      "SELECT question_id, rating FROM ReviewAttempt ORDER BY reviewed_at ASC, rowid ASC"
+    );
+    const ratingsByQuestion = new Map<string, ReviewRating[]>();
+    for (const { question_id, rating } of allRatings) {
+      const list = ratingsByQuestion.get(question_id) ?? [];
+      list.push(rating);
+      ratingsByQuestion.set(question_id, list);
+    }
+    const RECENT_CAP = 30;
+    return rows.map((q) => {
+      const all = ratingsByQuestion.get(q.id) ?? [];
+      return {
+        id: q.id,
+        question: q.question,
+        answer: q.answer,
+        difficulty: q.difficulty,
+        tags: JSON.parse(q.tags_json) as string[],
+        topic_id: q.topic_id,
+        topic_title: q.topic_title,
+        next_due_at: q.next_due_at,
+        last_reviewed_at: q.last_reviewed_at,
+        review_count: q.review_count,
+        mastery_score: q.mastery_score,
+        recent_ratings: all.length > RECENT_CAP ? all.slice(-RECENT_CAP) : all
+      };
+    });
   });
 }
 

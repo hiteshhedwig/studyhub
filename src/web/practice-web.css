@@ -121,3 +121,24 @@
   border-radius: var(--radius-sm);
 }
 .pw-notice-close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+
+/* ---------- Question history strip (mirrors desktop qh-strip) ---------- */
+.qh-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 10px 16px;
+  min-height: 48px;
+  overflow-x: auto;
+}
+.qh-bar {
+  flex-shrink: 0;
+  width: 8px;
+  height: 32px;
+  border-radius: 3px;
+  opacity: 0.85;
+}
+.qh-bar--forgot  { background: var(--danger); }
+.qh-bar--hard    { background: #d08a3e; }
+.qh-bar--good    { background: #22c55e; }
+.qh-bar--easy    { background: var(--accent); }
