@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { ArrowDownRight, ArrowUpRight, BookOpen, Check, ChevronLeft, ExternalLink, Feather, FileText, Minus, MessageSquare, Pencil, Quote, Trash2, Video } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BookOpen, Check, ChevronLeft, ChevronRight, ExternalLink, Feather, FileText, LayoutGrid, Minus, MessageSquare, Network, Pencil, Quote, Trash2, Video } from "lucide-react";
 import { sessionFocusMinutes, topicHasLateRevision, topicPracticeStats, topicTrend, type Trend } from "../../services/statsService";
 import { format as formatDate, formatDistanceToNow, isThisWeek, isToday, isYesterday, parseISO } from "date-fns";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -169,12 +169,146 @@ function TopicJournalSection({ topicId }: { topicId: string }) {
   );
 }
 
+type ViewMode = "list" | "map";
+type SortKey = "created" | "alpha" | "weak";
+type TopicGroup = { catId: string; catName: string; catColor: string; topics: Topic[] };
+
+type MapNode = { id: string; x: number; y: number; r: number; label: string; type: "center" | "category" | "topic"; color: string; topicId: string | null };
+type MapEdge = { from: string; to: string; color: string };
+
+function TopicMindMap({ grouped, navigate }: { grouped: TopicGroup[]; navigate: (to: string) => void }) {
+  const [hovered, setHovered] = useState<string | null>(null);
+  const W = 1000, H = 740;
+  const cx = W / 2, cy = H / 2;
+
+  const { nodes, edges } = useMemo(() => {
+    const nodes: MapNode[] = [];
+    const edges: MapEdge[] = [];
+    nodes.push({ id: "__center__", x: cx, y: cy, r: 28, label: "Topics", type: "center", color: "var(--accent)", topicId: null });
+    const N = grouped.length;
+    grouped.forEach(({ catId, catName, catColor, topics: catTopics }, i) => {
+      const catAngle = N > 0 ? (i / N) * 2 * Math.PI - Math.PI / 2 : 0;
+      const M = catTopics.length;
+      const R_CAT = 190 + Math.min(M * 5, 50);
+      const catX = cx + R_CAT * Math.cos(catAngle);
+      const catY = cy + R_CAT * Math.sin(catAngle);
+      const catNodeId = `cat-${catId}`;
+      const color = catColor || "var(--accent)";
+      nodes.push({ id: catNodeId, x: catX, y: catY, r: 14 + Math.min(M * 1.5, 12), label: catName, type: "category", color, topicId: null });
+      edges.push({ from: "__center__", to: catNodeId, color });
+      const R_TOPIC = Math.max(90, 68 + M * 20);
+      catTopics.forEach((topic, j) => {
+        const arc = M === 1 ? 0 : Math.min(Math.PI * 0.95, 0.38 + M * 0.22);
+        const tAngle = catAngle + (M > 1 ? arc * (j / (M - 1) - 0.5) : 0);
+        nodes.push({ id: topic.id, x: catX + R_TOPIC * Math.cos(tAngle), y: catY + R_TOPIC * Math.sin(tAngle), r: 7 + topic.mastery_score / 18, label: topic.title, type: "topic", color, topicId: topic.id });
+        edges.push({ from: catNodeId, to: topic.id, color });
+      });
+    });
+    return { nodes, edges };
+  }, [grouped, cx, cy]);
+
+  const nodeById = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
+  const adjacency = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const e of edges) {
+      if (!m.has(e.from)) m.set(e.from, new Set());
+      if (!m.has(e.to)) m.set(e.to, new Set());
+      m.get(e.from)!.add(e.to);
+      m.get(e.to)!.add(e.from);
+    }
+    return m;
+  }, [edges]);
+  const parentOf = useMemo(() => { const m = new Map<string, string>(); for (const e of edges) m.set(e.to, e.from); return m; }, [edges]);
+
+  function isHighlit(id: string) { return hovered !== null && (id === hovered || (adjacency.get(hovered)?.has(id) ?? false)); }
+
+  function labelPos(node: MapNode): { x: number; y: number; anchor: "middle" | "start" | "end"; dy: string } {
+    if (node.type === "center") return { x: node.x, y: node.y, anchor: "middle", dy: "0.35em" };
+    const parent = nodeById.get(parentOf.get(node.id) ?? "");
+    const refX = parent ? parent.x : cx;
+    const refY = parent ? parent.y : cy;
+    const dx = node.x - refX, dy = node.y - refY;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const off = node.r + 13;
+    const anchor: "middle" | "start" | "end" = Math.abs(dx / dist) < 0.28 ? "middle" : dx > 0 ? "start" : "end";
+    return { x: node.x + (dx / dist) * off, y: node.y + (dy / dist) * off, anchor, dy: "0.35em" };
+  }
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", maxHeight: 700 }} aria-label="Topics mind map">
+        <defs>
+          <radialGradient id="mm-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <ellipse cx={cx} cy={cy} rx={420} ry={360} fill="url(#mm-glow)" />
+        {edges.map((edge, i) => {
+          const fn = nodeById.get(edge.from);
+          const tn = nodeById.get(edge.to);
+          if (!fn || !tn) return null;
+          const hi = hovered !== null && (edge.from === hovered || edge.to === hovered);
+          return (
+            <line key={i} x1={fn.x} y1={fn.y} x2={tn.x} y2={tn.y}
+              stroke={hi ? edge.color : "var(--border-strong)"}
+              strokeWidth={hi ? 2 : 1}
+              strokeOpacity={hovered ? (hi ? 0.9 : 0.14) : 0.42}
+            />
+          );
+        })}
+        {nodes.map(node => {
+          const hi = isHighlit(node.id);
+          const dimmed = hovered !== null && !hi;
+          const lp = labelPos(node);
+          const showLabel = node.type !== "topic" || hi;
+          return (
+            <g key={node.id} style={{ cursor: node.topicId ? "pointer" : "default" }}
+              onMouseEnter={() => setHovered(node.id)}
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => node.topicId && navigate(`/topics/${node.topicId}`)}
+            >
+              {hi && node.type !== "center" && (
+                <circle cx={node.x} cy={node.y} r={node.r + 9} fill={node.color} fillOpacity={0.15} />
+              )}
+              <circle cx={node.x} cy={node.y} r={node.r}
+                fill={node.type === "center" ? "var(--accent)" : node.color}
+                fillOpacity={dimmed ? 0.12 : node.type === "topic" ? 0.65 : 0.88}
+                stroke={hi ? node.color : "var(--border)"}
+                strokeWidth={hi ? 2.5 : node.type === "center" ? 2 : 1}
+                strokeOpacity={dimmed ? 0.15 : 0.75}
+              />
+              {showLabel && (
+                <text x={lp.x} y={lp.y} dy={lp.dy} textAnchor={lp.anchor}
+                  fill={dimmed ? "var(--muted)" : hi ? "var(--text-primary)" : node.type === "center" ? "var(--accent-contrast)" : "var(--text-secondary)"}
+                  fontSize={node.type === "center" ? 10 : node.type === "category" ? 10 : 9}
+                  fontWeight={node.type === "topic" ? 400 : 700}
+                  paintOrder="stroke" stroke="var(--surface)" strokeWidth={3} strokeLinejoin="round"
+                  style={{ pointerEvents: "none", userSelect: "none" }}
+                >
+                  {node.label.length > 20 ? node.label.slice(0, 18) + "…" : node.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <p className="muted" style={{ fontSize: "var(--text-xs)", padding: "6px 14px 10px", margin: 0 }}>
+        Hover to highlight · click a topic to open it · node size = mastery
+      </p>
+    </div>
+  );
+}
+
 export function TopicsPage() {
   const store = useAppStore();
   const navigate = useNavigate();
   const { topics, sessions, questions, revisions } = store;
   const [editingId, setEditingId] = useState("");
   const [draftTitle, setDraftTitle] = useState("");
+  const [view, setView] = useState<ViewMode>("list");
+  const [sort, setSort] = useState<SortKey>("created");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   function startRename(topicId: string, title: string) {
     setEditingId(topicId);
@@ -183,26 +317,15 @@ export function TopicsPage() {
 
   async function saveTitle(topic: Topic) {
     const next = draftTitle.trim();
-    if (!next) {
-      toast.warning("Topic name cannot be empty.");
-      return;
-    }
-    if (next === topic.title) {
-      setEditingId("");
-      return;
-    }
+    if (!next) { toast.warning("Topic name cannot be empty."); return; }
+    if (next === topic.title) { setEditingId(""); return; }
     await store.updateTopic({ id: topic.id, title: next, description: topic.description, status: topic.status, mastery_score: topic.mastery_score });
     setEditingId("");
     toast.success("Topic renamed.");
   }
 
   async function deleteTopic(topicId: string, title: string) {
-    const ok = await confirmDialog({
-      title: `Delete "${title}"?`,
-      message: "Removes the topic and every session, cheatsheet link, question, and revision attached to it.",
-      confirmLabel: "Delete topic",
-      tone: "danger"
-    });
+    const ok = await confirmDialog({ title: `Delete "${title}"?`, message: "Removes the topic and every session, cheatsheet link, question, and revision attached to it.", confirmLabel: "Delete topic", tone: "danger" });
     if (!ok) return;
     await store.deleteTopic(topicId);
     toast.success("Topic deleted.");
@@ -213,107 +336,135 @@ export function TopicsPage() {
     toast.success(enabled ? `Spaced repetition on for "${topic.title}" — first review tomorrow.` : `Spaced repetition off for "${topic.title}".`);
   }
 
+  const grouped = useMemo<TopicGroup[]>(() => {
+    const map = new Map<string, TopicGroup>();
+    for (const t of topics) {
+      const catId = t.category_id ?? "uncategorized";
+      if (!map.has(catId)) map.set(catId, { catId, catName: t.category_name ?? "Uncategorized", catColor: t.category_color ?? "", topics: [] });
+      map.get(catId)!.topics.push(t);
+    }
+    for (const g of map.values()) {
+      if (sort === "alpha") g.topics.sort((a, b) => a.title.localeCompare(b.title));
+      else if (sort === "weak") g.topics.sort((a, b) => a.mastery_score - b.mastery_score);
+      else g.topics.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+    }
+    return [...map.values()].sort((a, b) => a.catName.localeCompare(b.catName));
+  }, [topics, sort]);
+
+  function toggleCollapse(catId: string) {
+    setCollapsed(prev => { const s = new Set(prev); s.has(catId) ? s.delete(catId) : s.add(catId); return s; });
+  }
+
+  function renderTopicCard(topic: Topic) {
+    const topicSessions = sessions.filter(s => s.topic_id === topic.id);
+    const topicQuestions = questions.filter(q => q.topic_id === topic.id);
+    const pending = revisions.filter(r => r.topic_id === topic.id && r.status === "pending").length;
+    const srEnabled = revisions.some(r => r.topic_id === topic.id && r.type === "topic_review" && r.status === "pending");
+    const trend = topicTrend(topic.id, revisions);
+    const isLate = topicHasLateRevision(topic.id, revisions);
+    const edgeClass = isLate ? "edge-danger" : topic.status === "mastered" ? "edge-mastered" : "";
+    return (
+      <article
+        className={`card link ${edgeClass}`}
+        key={topic.id}
+        tabIndex={0}
+        role="link"
+        onClick={(e) => { if ((e.target as HTMLElement).closest("button")) return; navigate(`/topics/${topic.id}`); }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/topics/${topic.id}`); } }}
+      >
+        <div className="split">
+          <span className="pill" style={{ borderColor: topic.category_color }}>{topic.category_name}</span>
+          <div className="button-row">
+            <button className="btn icon" aria-label={`Rename ${topic.title}`} onClick={(e) => { e.stopPropagation(); startRename(topic.id, topic.title); }}><Pencil size={16} /></button>
+            <button className="btn danger icon" aria-label={`Delete ${topic.title}`} onClick={(e) => { e.stopPropagation(); void deleteTopic(topic.id, topic.title); }}><Trash2 size={16} /></button>
+          </div>
+        </div>
+        {editingId === topic.id ? (
+          <div className="button-row" style={{ margin: "8px 0 0 0" }} onClick={(e) => e.stopPropagation()}>
+            <input className="input" value={draftTitle} autoFocus aria-label="Topic name"
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") void saveTitle(topic); if (e.key === "Escape") setEditingId(""); }}
+            />
+            <button className="btn primary" onClick={(e) => { e.stopPropagation(); void saveTitle(topic); }}>Save</button>
+            <button className="btn" onClick={(e) => { e.stopPropagation(); setEditingId(""); }}>Cancel</button>
+          </div>
+        ) : (
+          <h2 style={{ margin: "8px 0 0 0", display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="truncate">{topic.title}</span>
+            {trend ? <TrendArrow trend={trend} /> : null}
+          </h2>
+        )}
+        <p className="muted">{topic.description || "No description yet."}</p>
+        <div className="progress"><span style={{ width: `${topic.mastery_score}%` }} /></div>
+        <div className="split muted" style={{ fontSize: "var(--text-sm)" }}>
+          <span>{topicSessions.length} sessions</span>
+          <span>{topicQuestions.length} questions</span>
+          <span>{pending} due</span>
+        </div>
+        <label className="toggle" style={{ fontSize: "var(--text-sm)", marginTop: 4 }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={srEnabled} onChange={(e) => { e.stopPropagation(); void toggleSpacedRepetition(topic, e.target.checked); }} />
+          <span>Spaced repetition</span>
+        </label>
+      </article>
+    );
+  }
+
   return (
     <>
       <PageHeader title="Topics" eyebrow="Knowledge homes for everything you are learning." />
-      {topics.length === 0 ? <EmptyState>Create a topic from Today to begin building your study map.</EmptyState> : null}
-      <section className="grid three">
-        {topics.map((topic) => {
-          const topicSessions = sessions.filter((session) => session.topic_id === topic.id);
-          const topicQuestions = questions.filter((question) => question.topic_id === topic.id);
-          const pending = revisions.filter((revision) => revision.topic_id === topic.id && revision.status === "pending").length;
-          // "Spaced repetition on" == the topic has a live topic-review ladder. Old
-          // topics added through Materials start with none, so the toggle is how you
-          // pull them into the review track without a focus session.
-          const srEnabled = revisions.some((revision) => revision.topic_id === topic.id && revision.type === "topic_review" && revision.status === "pending");
-          const trend = topicTrend(topic.id, revisions);
-          const isLate = topicHasLateRevision(topic.id, revisions);
-          const edgeClass = isLate ? "edge-danger" : topic.status === "mastered" ? "edge-mastered" : "";
-          return (
-            <article
-              className={`card link ${edgeClass}`}
-              key={topic.id}
-              tabIndex={0}
-              role="link"
-              onClick={(event) => {
-                // Don't navigate if the click landed on the delete button.
-                if ((event.target as HTMLElement).closest("button")) return;
-                navigate(`/topics/${topic.id}`);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  navigate(`/topics/${topic.id}`);
-                }
-              }}
+      <div className="card button-row" style={{ flexWrap: "wrap" }}>
+        <div className="button-row" role="radiogroup" aria-label="View mode">
+          <button className={`btn small ${view === "list" ? "primary" : ""}`} type="button" onClick={() => setView("list")}>
+            <LayoutGrid size={14} /> List
+          </button>
+          <button className={`btn small ${view === "map" ? "primary" : ""}`} type="button" onClick={() => setView("map")}>
+            <Network size={14} /> Mind map
+          </button>
+        </div>
+        {view === "list" && (
+          <>
+            <span className="muted" style={{ fontSize: "var(--text-xs)" }}>Sort</span>
+            <div className="button-row" role="radiogroup" aria-label="Sort topics">
+              <button className={`btn small ${sort === "created" ? "primary" : ""}`} type="button" onClick={() => setSort("created")}>Newest</button>
+              <button className={`btn small ${sort === "alpha" ? "primary" : ""}`} type="button" onClick={() => setSort("alpha")}>A–Z</button>
+              <button className={`btn small ${sort === "weak" ? "primary" : ""}`} type="button" onClick={() => setSort("weak")}>Weakest</button>
+            </div>
+            <button className="btn small ghost" type="button" style={{ marginLeft: "auto" }}
+              onClick={() => setCollapsed(collapsed.size < grouped.length ? new Set(grouped.map(g => g.catId)) : new Set())}
             >
-              <div className="split">
-                <span className="pill" style={{ borderColor: topic.category_color }}>{topic.category_name}</span>
-                <div className="button-row">
-                  <button
-                    className="btn icon"
-                    aria-label={`Rename ${topic.title}`}
-                    onClick={(event) => { event.stopPropagation(); startRename(topic.id, topic.title); }}
-                  >
-                    <Pencil size={16} />
-                  </button>
-                  <button
-                    className="btn danger icon"
-                    aria-label={`Delete ${topic.title}`}
-                    onClick={(event) => { event.stopPropagation(); void deleteTopic(topic.id, topic.title); }}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+              {collapsed.size < grouped.length ? "Collapse all" : "Expand all"}
+            </button>
+          </>
+        )}
+      </div>
+      {topics.length === 0 ? <EmptyState>Create a topic from Today to begin building your study map.</EmptyState> : null}
+      {view === "map" ? (
+        <div style={{ marginTop: 20 }}>
+          <TopicMindMap grouped={grouped} navigate={navigate} />
+        </div>
+      ) : (
+        <div style={{ marginTop: 20 }}>
+          {grouped.map(({ catId, catName, catColor, topics: catTopics }) => {
+            const isOpen = !collapsed.has(catId);
+            return (
+              <div key={catId} style={{ marginBottom: 20 }}>
+                <button className="topics-cat-header" type="button" onClick={() => toggleCollapse(catId)} aria-expanded={isOpen}>
+                  <span className="topics-cat-dot" style={{ background: catColor || "var(--accent)" }} />
+                  <span className="topics-cat-name">{catName}</span>
+                  <span className="pill" style={{ fontSize: "var(--text-xs)", padding: "1px 8px" }}>{catTopics.length}</span>
+                  <ChevronRight size={15} className={`topics-cat-chevron${isOpen ? " open" : ""}`} aria-hidden />
+                </button>
+                {isOpen && (
+                  <section className="grid three" style={{ marginTop: 10 }}>
+                    {catTopics.map(renderTopicCard)}
+                  </section>
+                )}
               </div>
-              {editingId === topic.id ? (
-                <div className="button-row" style={{ margin: "8px 0 0 0" }} onClick={(event) => event.stopPropagation()}>
-                  <input
-                    className="input"
-                    value={draftTitle}
-                    autoFocus
-                    aria-label="Topic name"
-                    onChange={(event) => setDraftTitle(event.target.value)}
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => {
-                      event.stopPropagation();
-                      if (event.key === "Enter") void saveTitle(topic);
-                      if (event.key === "Escape") setEditingId("");
-                    }}
-                  />
-                  <button className="btn primary" onClick={(event) => { event.stopPropagation(); void saveTitle(topic); }}>Save</button>
-                  <button className="btn" onClick={(event) => { event.stopPropagation(); setEditingId(""); }}>Cancel</button>
-                </div>
-              ) : (
-                <h2 style={{ margin: "8px 0 0 0", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className="truncate">{topic.title}</span>
-                  {trend ? <TrendArrow trend={trend} /> : null}
-                </h2>
-              )}
-              <p className="muted">{topic.description || "No description yet."}</p>
-              <div className="progress"><span style={{ width: `${topic.mastery_score}%` }} /></div>
-              <div className="split muted" style={{ fontSize: "var(--text-sm)" }}>
-                <span>{topicSessions.length} sessions</span>
-                <span>{topicQuestions.length} questions</span>
-                <span>{pending} due</span>
-              </div>
-              <label
-                className="toggle"
-                style={{ fontSize: "var(--text-sm)", marginTop: 4 }}
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-              >
-                <input
-                  type="checkbox"
-                  checked={srEnabled}
-                  onChange={(event) => { event.stopPropagation(); void toggleSpacedRepetition(topic, event.target.checked); }}
-                />
-                <span>Spaced repetition</span>
-              </label>
-            </article>
-          );
-        })}
-      </section>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
