@@ -655,7 +655,7 @@ export function PracticePage() {
       </div>
       )}
       {history.length > 0 && current ? (
-        <div className="qh-strip" aria-label="Past ratings for this question">
+        <div className="card qh-strip" aria-label="Past ratings for this question">
           {history.map((h, i) => (
             <div
               key={i}

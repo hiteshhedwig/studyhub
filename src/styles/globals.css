@@ -2145,12 +2145,9 @@ article.card:hover {
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  padding: 8px 14px;
-  background: var(--surface-soft);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  padding: 10px 16px;
   margin-top: 10px;
-  min-height: 44px;
+  min-height: 48px;
   overflow-x: auto;
 }
 .qh-bar {
