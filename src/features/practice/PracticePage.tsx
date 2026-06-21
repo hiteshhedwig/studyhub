@@ -289,9 +289,12 @@ export function PracticePage() {
     return shuffleWithSeed(store.questions.filter(isRecall), shuffleSeed);
   }, [store.questions, mode, topicId, topicOrder, shuffleSeed, difficulty]);
 
-  // In a review the queue is finite and ordered (no modulo) so it can run out
-  // and surface the completion panel; normal modes loop with modulo.
-  const current = reviewActive ? reviewPool[index] : pool[index % Math.max(pool.length, 1)];
+  // Due and random modes loop infinitely (large dynamic pool). Finite modes
+  // (topic, code, weak, bookmarked) surface a completion panel instead so the
+  // user knows they've seen every card rather than silently looping.
+  const finiteMode = mode === "topic" || mode === "code" || mode === "weak" || mode === "bookmarked";
+  const sessionDone = !reviewActive && finiteMode && pool.length > 0 && index >= pool.length;
+  const current = reviewActive ? reviewPool[index] : (sessionDone ? undefined : pool[index % Math.max(pool.length, 1)]);
 
   // Reset transient state when the active question changes (e.g., mode switch,
   // topic switch, pool changes). Without this, the stale "revealed" / answer
@@ -930,6 +933,21 @@ export function PracticePage() {
               )}
             </div>
           )
+        ) : sessionDone ? (
+          <div className="grid" style={{ justifyItems: "center", textAlign: "center", gap: 14, padding: "12px 0" }}>
+            <CheckCircle2 size={40} style={{ color: "var(--accent)" }} aria-hidden="true" />
+            <div>
+              <h3 style={{ margin: 0 }}>All {pool.length} question{pool.length === 1 ? "" : "s"} done</h3>
+              <p className="muted" style={{ margin: "6px 0 0" }}>
+                You've been through every card in this set. Practice again to keep the reps going.
+              </p>
+            </div>
+            <div className="button-row">
+              <button className="btn primary" type="button" onClick={() => { setIndex(0); setShuffleSeed(Date.now()); }}>
+                <CheckCircle2 size={16} /> Practice again
+              </button>
+            </div>
+          </div>
         ) : reviewActive ? (
           <div className="grid" style={{ justifyItems: "center", textAlign: "center", gap: 14, padding: "12px 0" }}>
             <CheckCircle2 size={40} style={{ color: "var(--accent)" }} aria-hidden="true" />
