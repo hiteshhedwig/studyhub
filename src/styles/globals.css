@@ -2140,6 +2140,34 @@ article.card:hover {
 .practice-timer svg { color: var(--accent); }
 .practice-timer-clock { font-weight: 600; color: var(--text-primary); }
 
+/* ---------- Practice question history strip ---------- */
+.qh-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 8px 14px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 10px;
+  min-height: 44px;
+  overflow-x: auto;
+}
+.qh-bar {
+  flex-shrink: 0;
+  width: 8px;
+  height: 32px;
+  border-radius: 3px;
+  cursor: default;
+  transition: height 0.1s ease, opacity 0.1s ease;
+  opacity: 0.85;
+}
+.qh-bar:hover { opacity: 1; height: 36px; }
+.qh-bar--forgot  { background: var(--danger); }
+.qh-bar--hard    { background: #d08a3e; }
+.qh-bar--good    { background: #22c55e; }
+.qh-bar--easy    { background: var(--accent); }
+
 /* ---------- Practice notes-to-self ---------- */
 .qnote {
   display: grid;

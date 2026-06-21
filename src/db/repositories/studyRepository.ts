@@ -491,6 +491,17 @@ export async function previewQuestionSetText(setId: string, data: QuestionImport
   });
 }
 
+/** Rating history for a single question, oldest first. Used by the practice page history strip. */
+export async function getQuestionHistory(questionId: string): Promise<{ rating: ReviewRating; reviewed_at: string }[]> {
+  return withDb((db) =>
+    toRows<{ rating: ReviewRating; reviewed_at: string }>(
+      db,
+      "SELECT rating, reviewed_at FROM ReviewAttempt WHERE question_id = ? ORDER BY reviewed_at ASC, rowid ASC",
+      [questionId]
+    )
+  );
+}
+
 /** All practice attempts for a topic's questions, oldest first. Read-only; lazy-loaded by the topic detail page. */
 export async function getTopicAttempts(topicId: string): Promise<ReviewAttempt[]> {
   return withDb((db) =>

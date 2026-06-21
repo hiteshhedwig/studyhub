@@ -16,7 +16,7 @@ import type { CodeMeta } from "../../db/repositories/types";
 import { aggregateReviewRating, buildTopicReviewSet, isQuestionDue } from "../../services/spacedRepetition";
 import { evaluateAnswer, evaluateCode, recallGradeToRating, type EvaluationResult } from "../../services/aiEvaluationService";
 import { useAppStore } from "../../store/appStore";
-import { addQuestionNote, addTopicJournalEntry, deleteQuestionNote, getQuestionNotes, getTopicJournal, updateQuestionNote } from "../../db/repositories/studyRepository";
+import { addQuestionNote, addTopicJournalEntry, deleteQuestionNote, getQuestionHistory, getQuestionNotes, getTopicJournal, updateQuestionNote } from "../../db/repositories/studyRepository";
 import type { Question, QuestionNoteWithLock, ReviewRating, TopicJournalEntry } from "../../db/repositories/types";
 import { toast } from "../../store/uiStore";
 
@@ -206,6 +206,10 @@ export function PracticePage() {
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
   const aiAvailable = aiConfig.enabled && Boolean(aiConfig.apiKey);
 
+  // Rating history strip — loaded on card flip, shown before reveal so you can
+  // see past performance while still in recall mode.
+  const [history, setHistory] = useState<{ rating: ReviewRating; reviewed_at: string }[]>([]);
+
   // Per-question "notes to self": prior-encounter notes (read-only) plus the
   // draft you're writing now, which seals into history the moment you rate.
   const [notes, setNotes] = useState<QuestionNoteWithLock[]>([]);
@@ -317,6 +321,7 @@ export function PracticePage() {
     setStartedAt(Date.now());
     revealedAtRef.current = null;
     setEvalState({ status: "idle" });
+    setHistory([]);
     setNotes([]);
     setDraft("");
     setEditingId(null);
@@ -325,6 +330,9 @@ export function PracticePage() {
     setSolutionRunResult(null);
     setSolutionRunning(false);
     setCodeEvalState({ status: "idle" });
+    if (currentId) {
+      void getQuestionHistory(currentId).then(setHistory);
+    }
   }, [currentId]);
 
   // Reset code editor to starter code whenever the question changes
@@ -646,6 +654,17 @@ export function PracticePage() {
         </span>
       </div>
       )}
+      {history.length > 0 && current ? (
+        <div className="qh-strip" aria-label="Past ratings for this question">
+          {history.map((h, i) => (
+            <div
+              key={i}
+              className={`qh-bar qh-bar--${h.rating}`}
+              title={`${h.rating} · ${new Date(h.reviewed_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`}
+            />
+          ))}
+        </div>
+      ) : null}
       <section className="card raised" style={{ marginTop: 20 }}>
         {current ? (
           codeMeta ? (
