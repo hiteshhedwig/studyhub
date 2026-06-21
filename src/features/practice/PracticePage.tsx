@@ -30,6 +30,7 @@ function formatClock(totalSeconds: number): string {
 
 type Mode = "due" | "topic" | "weak" | "random" | "bookmarked" | "code";
 type TopicOrder = "original" | "shuffled";
+type Difficulty = "" | "easy" | "medium" | "hard";
 
 const MODE_LABELS: Record<Mode, string> = {
   due: "Due",
@@ -192,6 +193,7 @@ export function PracticePage() {
   const [mode, setMode] = useState<Mode>("due");
   const [topicId, setTopicId] = useState("");
   const [topicOrder, setTopicOrder] = useState<TopicOrder>("original");
+  const [difficulty, setDifficulty] = useState<Difficulty>("");
   const [shuffleSeed, setShuffleSeed] = useState(() => Date.now());
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -270,7 +272,7 @@ export function PracticePage() {
       return shuffleWithSeed(list, shuffleSeed);
     }
     if (mode === "topic") {
-      const list = store.questions.filter((question) => isRecall(question) && (!topicId || question.topic_id === topicId));
+      const list = store.questions.filter((question) => isRecall(question) && (!topicId || question.topic_id === topicId) && (!difficulty || question.difficulty === difficulty));
       return topicOrder === "shuffled" ? shuffleWithSeed(list, shuffleSeed) : list;
     }
     if (mode === "weak") {
@@ -280,12 +282,12 @@ export function PracticePage() {
       return store.questions.filter((question) => isRecall(question) && Boolean(question.bookmarked));
     }
     if (mode === "code") {
-      const list = store.questions.filter((question) => question.code_meta_json !== null && (!topicId || question.topic_id === topicId));
+      const list = store.questions.filter((question) => question.code_meta_json !== null && (!topicId || question.topic_id === topicId) && (!difficulty || question.difficulty === difficulty));
       return topicOrder === "shuffled" ? shuffleWithSeed(list, shuffleSeed) : list;
     }
     // Random — recall only
     return shuffleWithSeed(store.questions.filter(isRecall), shuffleSeed);
-  }, [store.questions, mode, topicId, topicOrder, shuffleSeed]);
+  }, [store.questions, mode, topicId, topicOrder, shuffleSeed, difficulty]);
 
   // In a review the queue is finite and ordered (no modulo) so it can run out
   // and surface the completion panel; normal modes loop with modulo.
@@ -576,7 +578,7 @@ export function PracticePage() {
             className={`btn ${mode === item ? "primary" : ""}`}
             key={item}
             type="button"
-            onClick={() => { setMode(item); setIndex(0); }}
+            onClick={() => { setMode(item); setIndex(0); setDifficulty(""); }}
           >
             {MODE_LABELS[item]}
           </button>
@@ -595,6 +597,18 @@ export function PracticePage() {
                 return <option key={topic.id} value={topic.id}>{topic.title} ({count})</option>;
               })}
             </select>
+            <div className="button-row" role="radiogroup" aria-label="Difficulty filter">
+              {(["", "easy", "medium", "hard"] as Difficulty[]).map((d) => (
+                <button
+                  key={d || "all"}
+                  type="button"
+                  className={`btn small ${difficulty === d ? "primary" : ""}`}
+                  onClick={() => { setDifficulty(d); setIndex(0); }}
+                >
+                  {d === "" ? "All" : d.charAt(0).toUpperCase() + d.slice(1)}
+                </button>
+              ))}
+            </div>
             <div className="button-row" role="radiogroup" aria-label="Question order">
               <button
                 type="button"
