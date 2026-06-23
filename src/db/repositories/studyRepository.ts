@@ -1,7 +1,7 @@
 import type { Database } from "sql.js";
 import { addDays, endOfDay, parseISO } from "date-fns";
 import { getDatabase, one, persistDatabase, toRows } from "../database";
-import { aggregateReviewRating, calculateQuestionReview, createTopicRevisionDates } from "../../services/spacedRepetition";
+import { aggregateReviewRating, calculateQuestionReview, createTopicRevisionDates, topicRevisionIntervals } from "../../services/spacedRepetition";
 import { getActiveExamDate } from "../../services/preferencesService";
 import type { Category, Cheatsheet, Difficulty, Note, NoteItem, Question, QuestionNote, QuestionNoteWithLock, QuestionSet, ResourceLink, ReviewActivityRow, ReviewAttempt, ReviewRating, RevisionSchedule, StudySession, Topic, TopicJournalEntry } from "./types";
 import type { QuestionImport } from "../../services/importQuestions";
@@ -299,7 +299,36 @@ export async function setTopicSpacedRepetition(topicId: string, enabled: boolean
     // Always clear the pending ladder first so enabling can't duplicate it.
     db.run("DELETE FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'pending'", [topicId]);
     if (enabled) {
-      const dates = createTopicRevisionDates(new Date());
+      // If the topic already has completed reviews, continue the ladder from where it left
+      // off instead of restarting from today (which would always put the first review tomorrow).
+      const intervals = topicRevisionIntervals();
+      const completedRows = toRows<{ due_at: string; session_id: string | null }>(
+        db,
+        "SELECT due_at, session_id FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'completed' ORDER BY due_at ASC",
+        [topicId]
+      );
+      const completedCount = Math.min(completedRows.length, intervals.length);
+
+      if (completedCount >= intervals.length) {
+        // All ladder steps already done — don't restart the ladder.
+        return;
+      }
+
+      let anchor: Date;
+      if (completedCount === 0) {
+        anchor = new Date();
+      } else {
+        // Reconstruct the original study-session date from the first completed review row.
+        const firstRow = completedRows[0];
+        if (firstRow.session_id) {
+          const session = one<{ ended_at: string }>(db, "SELECT ended_at FROM StudySession WHERE id = ?", [firstRow.session_id]);
+          anchor = session ? new Date(session.ended_at) : addDays(new Date(firstRow.due_at), -intervals[0]);
+        } else {
+          anchor = addDays(new Date(firstRow.due_at), -intervals[0]);
+        }
+      }
+
+      const dates = intervals.slice(completedCount).map((days) => addDays(anchor, days).toISOString());
       dates.forEach((dueAt) => {
         db.run("INSERT INTO RevisionSchedule VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [id(), topicId, null, dueAt, null, "topic_review", "pending", null, now()]);
       });

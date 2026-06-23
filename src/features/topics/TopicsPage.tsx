@@ -476,7 +476,7 @@ export function TopicsPage() {
 
   async function toggleSpacedRepetition(topic: Topic, enabled: boolean) {
     await store.setTopicSpacedRepetition(topic.id, enabled);
-    toast.success(enabled ? `Spaced repetition on for "${topic.title}" — first review tomorrow.` : `Spaced repetition off for "${topic.title}".`);
+    toast.success(enabled ? `Spaced repetition on for "${topic.title}".` : `Spaced repetition off for "${topic.title}".`);
   }
 
   const grouped = useMemo<TopicGroup[]>(() => {
