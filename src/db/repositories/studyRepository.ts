@@ -296,47 +296,70 @@ export async function setTopicSpacedRepetition(topicId: string, enabled: boolean
   return withDb((db) => {
     const topic = one<Topic>(db, "SELECT * FROM Topic WHERE id = ?", [topicId]);
     if (!topic) return;
-    // Always clear the pending ladder first so enabling can't duplicate it.
-    db.run("DELETE FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'pending'", [topicId]);
-    if (enabled) {
-      // If the topic already has completed reviews, continue the ladder from where it left
-      // off instead of restarting from today (which would always put the first review tomorrow).
-      const intervals = topicRevisionIntervals();
-      const completedRows = toRows<{ due_at: string; session_id: string | null }>(
-        db,
-        "SELECT due_at, session_id FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'completed' ORDER BY due_at ASC",
+
+    if (!enabled) {
+      // Suspend rather than delete: flip pending entries to 'rescheduled' so they are
+      // invisible to the review queue (which only shows 'pending') but survive in the DB.
+      // Re-enabling can then restore the original dates exactly instead of restarting
+      // the ladder from tomorrow.
+      db.run(
+        "UPDATE RevisionSchedule SET status = 'rescheduled' WHERE topic_id = ? AND type = 'topic_review' AND status = 'pending'",
         [topicId]
       );
-      const completedCount = Math.min(completedRows.length, intervals.length);
-
-      if (completedCount >= intervals.length) {
-        // All ladder steps already done — don't restart the ladder.
-        return;
-      }
-
-      let anchor: Date;
-      if (completedCount === 0) {
-        anchor = new Date();
-      } else {
-        // Reconstruct the original study-session date from the first completed review row.
-        const firstRow = completedRows[0];
-        if (firstRow.session_id) {
-          const session = one<{ ended_at: string }>(db, "SELECT ended_at FROM StudySession WHERE id = ?", [firstRow.session_id]);
-          anchor = session ? new Date(session.ended_at) : addDays(new Date(firstRow.due_at), -intervals[0]);
-        } else {
-          anchor = addDays(new Date(firstRow.due_at), -intervals[0]);
-        }
-      }
-
-      const dates = intervals.slice(completedCount).map((days) => addDays(anchor, days).toISOString());
-      dates.forEach((dueAt) => {
-        db.run("INSERT INTO RevisionSchedule VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [id(), topicId, null, dueAt, null, "topic_review", "pending", null, now()]);
-      });
-      db.run("UPDATE Topic SET next_revision_at = ?, status = 'revising', updated_at = ? WHERE id = ?", [dates[0], now(), topicId]);
-    } else {
       const nextStatus = topic.status === "revising" ? "learning" : topic.status;
       db.run("UPDATE Topic SET next_revision_at = NULL, status = ?, updated_at = ? WHERE id = ?", [nextStatus, now(), topicId]);
+      return;
     }
+
+    // Re-enabling: restore previously-suspended entries if any exist.
+    const suspended = toRows<{ due_at: string }>(
+      db,
+      "SELECT due_at FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'rescheduled' ORDER BY due_at ASC",
+      [topicId]
+    );
+    if (suspended.length > 0) {
+      db.run(
+        "UPDATE RevisionSchedule SET status = 'pending' WHERE topic_id = ? AND type = 'topic_review' AND status = 'rescheduled'",
+        [topicId]
+      );
+      db.run("UPDATE Topic SET next_revision_at = ?, status = 'revising', updated_at = ? WHERE id = ?", [suspended[0].due_at, now(), topicId]);
+      return;
+    }
+
+    // No suspended entries — fresh enable. Use completed-review history to continue
+    // the ladder from the right place instead of always restarting from tomorrow.
+    const intervals = topicRevisionIntervals();
+    const completedRows = toRows<{ due_at: string; session_id: string | null }>(
+      db,
+      "SELECT due_at, session_id FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'completed' ORDER BY due_at ASC",
+      [topicId]
+    );
+    const completedCount = Math.min(completedRows.length, intervals.length);
+
+    if (completedCount >= intervals.length) {
+      return;
+    }
+
+    let anchor: Date;
+    if (completedCount === 0) {
+      anchor = new Date();
+    } else {
+      const firstRow = completedRows[0];
+      if (firstRow.session_id) {
+        const session = one<{ ended_at: string }>(db, "SELECT ended_at FROM StudySession WHERE id = ?", [firstRow.session_id]);
+        anchor = session ? new Date(session.ended_at) : addDays(new Date(firstRow.due_at), -intervals[0]);
+      } else {
+        anchor = addDays(new Date(firstRow.due_at), -intervals[0]);
+      }
+    }
+
+    // Remove any stale pending entries before inserting the fresh ladder.
+    db.run("DELETE FROM RevisionSchedule WHERE topic_id = ? AND type = 'topic_review' AND status = 'pending'", [topicId]);
+    const dates = intervals.slice(completedCount).map((days) => addDays(anchor, days).toISOString());
+    dates.forEach((dueAt) => {
+      db.run("INSERT INTO RevisionSchedule VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [id(), topicId, null, dueAt, null, "topic_review", "pending", null, now()]);
+    });
+    db.run("UPDATE Topic SET next_revision_at = ?, status = 'revising', updated_at = ? WHERE id = ?", [dates[0], now(), topicId]);
   }, true);
 }
 
