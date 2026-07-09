@@ -191,6 +191,7 @@ function ShapeTracePanel({ trace, label = "Shape trace" }: { trace: ShapeTraceLi
 export function PracticePage() {
   const store = useAppStore();
   const [mode, setMode] = useState<Mode>("due");
+  const [categoryId, setCategoryId] = useState("");
   const [topicId, setTopicId] = useState("");
   const [topicOrder, setTopicOrder] = useState<TopicOrder>("original");
   const [difficulty, setDifficulty] = useState<Difficulty>("");
@@ -600,9 +601,22 @@ export function PracticePage() {
         ))}
         {(mode === "topic" || mode === "code") ? (
           <>
+            {store.categories.length > 1 ? (
+              <select
+                className="select"
+                style={{ maxWidth: 200 }}
+                value={categoryId}
+                onChange={(event) => { setCategoryId(event.target.value); setTopicId(""); setIndex(0); setShuffleSeed(Date.now()); }}
+              >
+                <option value="">All categories</option>
+                {[...store.categories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
+                ))}
+              </select>
+            ) : null}
             <select className="select" style={{ maxWidth: 260 }} value={topicId} onChange={(event) => { setTopicId(event.target.value); setIndex(0); setShuffleSeed(Date.now()); }}>
               <option value="">{mode === "code" ? "All coding topics" : "All topics"}</option>
-              {store.topics.map((topic) => {
+              {store.topics.filter((topic) => !categoryId || topic.category_id === categoryId).map((topic) => {
                 if (mode === "code") {
                   const count = store.questions.filter((q) => q.code_meta_json !== null && q.topic_id === topic.id).length;
                   if (count === 0) return null;
